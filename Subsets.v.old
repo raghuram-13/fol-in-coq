@@ -1,0 +1,56 @@
+Require Import Coq.Program.Basics.
+Require Import Coq.Classes.RelationClasses.
+
+Section Subset. Variable U : Type.
+Set Implicit Arguments. Unset Strict Implicit.
+
+Definition Subset := U -> Prop.
+
+Definition of : (U -> Prop) -> Subset := @id _.
+
+Definition mem (x : U) (S :Subset) : Prop := S x.
+
+End Subset.
+
+Declare Scope subset_scope. Bind Scope subset_scope with Subset.
+Notation "x ∈ S" := (mem x S) (at level 70).
+Notation "x ∉ S" := (~mem x S) (at level 70).
+
+Local Notation "{ x : U | P }" := (of (fun x : U => P))   : subset_scope.
+Local Notation "{ x | P }"     := (of (fun x => P))       : subset_scope.
+
+Section Operations.
+
+Definition emptySet {U : Type} := {_ : U | False}.
+Notation "∅" := (Empty_set _) : subset_scope.
+
+Definition fullSet {U : Type} := {_ : U | True}.
+
+Definition singleton [U : Type] (x : U) : Subset U := of (eq x).
+
+Definition union {U : Type} (A B : Subset U) : Subset U :=
+{x | x ∈ A \/ x ∈ B}.
+Definition intersection {U : Type} (A B : Subset U) : Subset U :=
+{x | x ∈ A /\ x ∈ B}.
+
+Notation "A ∪ B" := (union A B)        (at level 65, right associativity) : subset_scope.
+Notation "A ∩ B" := (intersection A B) (at level 65, right associativity) : subset_scope.
+
+Definition complement {U : Type} (A : Subset U) : Subset U := {x | x ∉ A}.
+Definition setminus {U : Type} (A B : Subset U) : Subset U := A ∩ complement B.
+
+End Operations.
+
+Section Inclusion.
+
+Definition included {U : Type} (A B : Subset U) : Prop :=
+forall x, x ∈ A -> x ∈ B.
+
+Notation "A ⊆ B" := (included A B)     (at level 70)                      : subset_scope.
+
+Definition ext_equal 
+
+Instance incl_preorder {U : Type} : PreOrder included :=
+predicate_implication_preorder (l := Tcons U Tnil).
+
+End Inclusion.
