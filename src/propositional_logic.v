@@ -1,6 +1,6 @@
 Set Implicit Arguments. Unset Strict Implicit.
 
-Require Import SetNotations.
+Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
 
 Section SomeLogic.
 Context [p q : Prop].
@@ -156,9 +156,10 @@ end.
    tell whether p is in Γ or Γ', and that affects the proof of `Γ |- p` constructed. *)
 Fixpoint proof_trans' {dec : forall p, ({p ∈ Γ}+{p ∉ Γ}) + ({p ∈ Γ'}+{p ∉ Γ'})}
     p (proof : Γ ∪ Γ' |- p) : Γ |- p := match proof in _ |- p return Γ |- p with
-| by_assumption h_in_union   => dec_or_rect_on (dec := dec _) h_in_union
-                                (fun h_in : _ ∈ Γ => by_assumption h_in)
-                                (fun h_in' : _ ∈ Γ' => h h_in')
+| by_assumption h_in_union   => match sumbool_of_dec_either h_in_union (dec _) with
+                                | left h_in   => by_assumption h_in
+                                | right h_in' => h h_in'
+                                end
 | rule_1 p q                 => rule_1 p q
 | rule_2 p q r               => rule_2 p q r
 | by_contradiction p         => by_contradiction p
@@ -227,7 +228,7 @@ let (proof) := proof in
 (fix deduction_theorem [q] (proof : Γ, p |- q) : [Γ |- p '-> q] :=
 match proof in _ |- q return [_ |- p '-> q] with
 | by_assumption (or_introl h_assum) => add_under_imp p (by_assumption h_assum)
-| by_assumption (or_intror h)       => eq_ind _ (fun p' => [Γ |- p '-> p']) id _ h
+| by_assumption (or_intror h)       => rew dependent h in id p
 | rule_1 _ _                 => add_under_imp p (rule_1 (assumptions := Γ) _ _)
 | rule_2 _ _ _               => add_under_imp p (rule_2 (assumptions := Γ) _ _ _)
 | by_contradiction _         => add_under_imp p (by_contradiction (assumptions := Γ) _)
@@ -239,9 +240,10 @@ end) q proof.
 Fixpoint deduction_theorem' {dec : forall p', ({p' ∈ Γ}+{p' ∉ Γ})+({p = p'}+{p <> p'})}
     q (proof : Γ, p |- q) : Γ |- p '-> q :=
 match proof in _ |- q return Γ |- p '-> q with
-| by_assumption h_in_adjoin  => dec_or_rect_on (dec := dec _) h_in_adjoin
-                                (fun h : _ ∈ Γ => add_under_imp p (by_assumption h))
-                                (eq_rect p (fun p' => Γ |- p '-> p') id _)
+| by_assumption h_in_adjoin  => match sumbool_of_dec_either h_in_adjoin (dec _) with
+                                | left h  => add_under_imp p (by_assumption h)
+                                | right h => rew dependent h in id p
+                                end
 | rule_1 _ _                 => add_under_imp p (rule_1 (assumptions := Γ) _ _)
 | rule_2 _ _ _               => add_under_imp p (rule_2 (assumptions := Γ) _ _ _)
 | by_contradiction _         => add_under_imp p (by_contradiction (assumptions := Γ) _)
