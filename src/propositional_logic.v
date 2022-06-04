@@ -74,8 +74,8 @@ Definition neg (p : Proposition)    : Proposition := imp p falsum.
 (* Definition disj (p q : Proposition) : Proposition := imp (neg p) q. *)
 
 Local Notation "⊥" := falsum.
-Local Notation "p '-> q" := (imp p q) (at level 30, right associativity).
-Local Notation "¬ p" := (neg p) (at level 35).
+Local Notation "p '-> q" := (imp p q) (at level 60, right associativity).
+Local Notation "¬ p" := (neg p) (at level 35, p at level 35).
 (* Local Notation "p '/\ q" := (conj p q) (at level 80, right associativity). *)
 (* Local Notation "p '\/ q" := (disj p q) (at level 80, right associativity). *)
 
