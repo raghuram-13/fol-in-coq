@@ -14,11 +14,11 @@ Declare Scope subset_scope. Bind Scope subset_scope with unary_predicate.
 Delimit Scope subset_scope with subset_scope.
 
 Notation "∅"     := (false_predicate : unary_predicate _) : subset_scope.
-Notation "A ∪ B" := (predicate_union _ (A : unary_predicate _) B)
+Notation "A ∪ B" := (predicate_union _ (A : unary_predicate _) (B : unary_predicate _))
                       (at level 65, right associativity)  : subset_scope.
-Notation "A ∩ B" := (predicate_intersection _ (A : unary_predicate _) B)
+Notation "A ∩ B" := (predicate_intersection _ (A : unary_predicate _) (B : unary_predicate _))
                       (at level 65, right associativity)  : subset_scope.
-Notation "A ⊆ B" := (predicate_implication (A : unary_predicate _) B)
+Notation "A ⊆ B" := (predicate_implication (A : unary_predicate _) (B : unary_predicate _))
                       (at level 70)                       : subset_scope.
 
 Open Scope subset_scope.
