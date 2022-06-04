@@ -192,6 +192,11 @@ Definition proof_of_proof_subset Γ Γ' (h : Γ ⊆ Γ')
     : forall p, Γ |- p -> Γ' |- p :=
 proof_trans (fun _ h_in => by_assumption (h _ h_in)).
 
+Definition provable_trans Γ Γ' (h : forall [p], p ∈ Γ' -> [Γ |- p])
+    p (proof : [Γ' |- p]) : [Γ |- p] :=
+provable_trans' h (let (proof) := proof in
+                   proof_of_proof_subset (fun _ (h : _ ∈ Γ') => or_intror h) proof).
+
 (* It is perhaps too verbose, but we _can_ use `proof_trans'` to show the corresponding
    result for finitely many propositions in Γ' 'directly'. *)
 Check fun Γ p (proof : [Γ |- p]) => (provable_trans' (eq_ind p _ proof)
@@ -201,6 +206,8 @@ End RelationBetweenDifferentAssumptions.
 
 Section SomeLemmas.
 Context {Γ : unary_predicate Proposition}.
+
+Definition proof_refl p : Γ, p |- p := by_assumption (or_intror eq_refl).
 
 Definition id p : Γ |- (p '-> p) :=
 let step_1 : Γ |- p '-> (p '-> p) '-> p         := rule_1 p (p '-> p) in
@@ -255,6 +262,51 @@ match proof in _ |- q return Γ |- p '-> q with
 end.
 
 End DeductionTheorem.
+
+Section SomeMoreLemmas.
+
+Definition interchange_hypotheses {Γ} p q r : Γ |- (p '-> q '-> r) '-> (q '-> p '-> r).
+apply (proof_of_proof_subset (Γ := ∅) (fun p => False_ind (p ∈ Γ))).
+(* To show: |- ... *)
+apply (deduction_theorem' (dec := fun p => inl (right (Datatypes.id : ~False)))).
+(* To show: , p '-> q '-> r |- q '-> p '-> r *)
+apply modus_ponens_under_imp with (hyp := p '-> q).
++ apply rule_1.
++ apply (add_under_imp q).
+  apply modus_ponens with (hyp := p '-> q '-> r).
+  - apply by_assumption. exact (or_intror eq_refl).
+  - apply rule_2.
+Defined.
+
+Definition modus_tollens {Γ} p q : Γ |- (p '-> q) '-> (¬q '-> ¬p).
+refine (modus_ponens _ (interchange_hypotheses _ _ _)).
+(* Remove the Γ. *)
+apply (proof_of_proof_subset (Γ := ∅) (fun p => False_ind (p ∈ Γ))).
+(* Take ¬q '-> ¬p to the assumptions. *)
+apply (deduction_theorem' (dec := fun p => inl (right (Datatypes.id : ~False)))).
+exact (modus_ponens (add_under_imp p (proof_refl (¬q))) (rule_2 _ _ _)).
+Defined.
+
+Definition modus_tollens_conv {Γ} p q : Γ |- (¬q '-> ¬p) '-> (p '-> q).
+(* Remove the Γ. *)
+apply (proof_of_proof_subset (Γ := ∅) (fun p => False_ind (p ∈ Γ))).
+(* Take ¬q '-> ¬p to the assumptions. *)
+apply (deduction_theorem' (dec := fun p => inl (right (Datatypes.id : ~False)))).
+refine (modus_ponens_under_imp _ (add_under_imp p (by_contradiction q))).
+exact (modus_ponens (proof_refl (¬q '-> ¬p)) (interchange_hypotheses (¬q) p ⊥)).
+Defined.
+
+Definition exfalso {Γ} p : Γ |- ⊥ '-> p :=
+let intermediate : Γ |- ¬p '-> ¬⊥ := add_under_imp (¬p) (id ⊥) in
+modus_ponens intermediate (modus_tollens_conv ⊥ p).
+
+Definition from_contradiction {Γ} p q : Γ |- ¬p '-> p '-> q :=
+modus_ponens (add_under_imp p (exfalso q)) (rule_2 p ⊥ q).
+
+Definition absurd {Γ} p q : Γ |- p '-> ¬p '-> q :=
+modus_ponens (from_contradiction p q) (interchange_hypotheses (¬p) p q).
+
+End SomeMoreLemmas.
 
 End FactsAboutProofSystem.
 
