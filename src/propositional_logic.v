@@ -1,6 +1,7 @@
 Set Implicit Arguments. Unset Strict Implicit.
 
 Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
+Require Lattices.
 
 Section SomeLogic.
 Context [p q : Prop].
@@ -330,5 +331,80 @@ induction proof as [p h_in|p q|p q r|p|p q h_p h_i_p h_imp h_i_imp]; [
 Qed.
 
 End Soundness.
+
+Section Completeness.
+
+Section BooleanAlgebra.
+Import Lattices.
+Import Coq.Classes.RelationClasses (Reflexive, Transitive, PreOrder).
+Context {Γ : unary_predicate Proposition}.
+
+Definition provable_le p q := [Γ, p |- q].
+
+Definition provable_le_refl : Reflexive provable_le := proof_refl.
+
+Definition provable_le_trans : Transitive provable_le :=
+fun p q r proof1 proof2 =>
+(* provable_trans' (fun q' (h : q' ∈ Γ ∪ eq q) => match h with
+                | or_introl h => by_assumption (or_introl h : q' ∈ Γ ∪ eq p)
+                | or_intror h => rew h in proof1
+                end)
+    (let (proof2) := proof2 in
+      proof_of_proof_subset ((fun _ h => or_intror h) : Γ ∪ eq q ⊆ (Γ ∪ eq p) ∪ (Γ ∪ eq q))
+          proof2) *)
+provable_trans (fun q' (h : q' ∈ Γ ∪ eq q) => match h with
+                | or_introl h => by_assumption (or_introl h : q' ∈ Γ ∪ eq p)
+                | or_intror h => rew h in proof1
+                end) proof2.
+
+Instance : PreOrder provable_le :=
+{| Coq.Classes.RelationClasses.PreOrder_Reflexive := provable_le_refl;
+   Coq.Classes.RelationClasses.PreOrder_Transitive := provable_le_trans |}.
+
+Definition LindenbaumTarksiAlgebra := {|
+  preCarrier := {| le := provable_le |};
+
+  or p q := ¬p '-> q; and p q := ¬(p '-> ¬q);
+  or_spec p q r := conj
+    (fun h_or => conj
+      (provable_le_trans (modus_ponens (proof_refl p) (absurd p q)) h_or)
+      (provable_le_trans (add_under_imp (¬p) (proof_refl q)) h_or))
+    (fun '(conj hp hq) => let lemma : [Γ, ¬p '-> q, ¬r |- ¬(¬p '-> q)] :=
+                            let mt_transform p' (h : [Γ, p' |- r]) : [Γ, ¬p '-> q, ¬r |- ¬p'] :=
+                              let (h) := deduction_theorem h in
+                              let h := proof_of_proof_subset
+                                         (fun p' h => or_introl (or_introl h)) h in
+                              modus_ponens (proof_refl (¬r)) (
+                                modus_ponens h (modus_tollens p' r))
+                            in
+                            let (h_np) := mt_transform p hp in
+                            let lemma' : [Γ, ¬p '-> q, ¬r |- (¬p '-> q) '-> q] :=
+                              deduction_theorem (
+                                modus_ponens
+                                    (proof_of_proof_subset
+                                      (fun _ h => or_introl h) h_np)
+                                    (proof_refl (¬p '-> q)))
+                            in let (lemma') := lemma' in
+                            let (h_nq) := mt_transform q hq in
+                            modus_ponens h_nq (
+                              modus_ponens lemma' (modus_tollens _ q))
+                          in let (lemma) := deduction_theorem lemma in
+                          has_proof (modus_ponens (proof_refl _)
+                                    (modus_ponens lemma
+                                        (modus_tollens_conv (¬p '-> q) r))));
+  (* and_spec := _; *)
+  (* and_distrib_or := _; *)
+
+  false := ⊥; true := ¬⊥;
+  false_spec p := modus_ponens (proof_refl ⊥) (exfalso p);
+  true_spec p := id ⊥;
+
+  not p := ¬p; or_not' p := id (¬p);
+  (* and_not' p := _ *)
+|}.
+
+End BooleanAlgebra.
+
+End Completeness.
 
 End Main.
