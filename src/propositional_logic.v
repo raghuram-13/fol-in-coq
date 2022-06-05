@@ -310,29 +310,21 @@ Definition LindenbaumTarksiAlgebra := {|
     (fun h_or => conj
       (provable_le_trans (modus_ponens (proof_refl p) (absurd p q)) h_or)
       (provable_le_trans (add_under_imp (¬p) (proof_refl q)) h_or))
-    (fun '(conj hp hq) => let lemma : [Γ, ¬p '-> q, ¬r |- ¬(¬p '-> q)] :=
-                            let mt_transform p' (h : [Γ, p' |- r]) : [Γ, ¬p '-> q, ¬r |- ¬p'] :=
-                              let (h) := deduction_theorem h in
-                              let h := proof_of_proof_subset
-                                         (fun p' h => or_introl (or_introl h)) h in
-                              modus_ponens (proof_refl (¬r)) (
-                                modus_ponens h (modus_tollens p' r))
-                            in
-                            let (h_np) := mt_transform p hp in
-                            let lemma' : [Γ, ¬p '-> q, ¬r |- (¬p '-> q) '-> q] :=
-                              deduction_theorem (
-                                modus_ponens
-                                    (proof_of_proof_subset
-                                      (fun _ h => or_introl h) h_np)
-                                    (proof_refl (¬p '-> q)))
-                            in let (lemma') := lemma' in
-                            let (h_nq) := mt_transform q hq in
-                            modus_ponens h_nq (
-                              modus_ponens lemma' (modus_tollens _ q))
-                          in let (lemma) := deduction_theorem lemma in
-                          has_proof (modus_ponens (proof_refl _)
-                                    (modus_ponens lemma
-                                        (modus_tollens_conv (¬p '-> q) r))));
+    (fun '(conj (inhabits h_p) (inhabits h_q)) =>
+      let lemma : Γ, ¬p '-> q |- ¬¬r :=
+        deduction_theorem (
+        let mt_transform [p'] (proof : Γ, p' |- r) : Γ, ¬p '-> q, ¬r |- ¬p' :=
+          modus_ponens (proof_refl (¬r)) (
+          modus_ponens (proof_mono (fun _ h => inl (inl h))
+                         (deduction_theorem proof))
+                       (modus_tollens p' r)) in
+        let lemma : Γ, ¬p '-> q, ¬r |- q :=
+          modus_ponens (mt_transform h_p)
+                       (ltac:(apply by_assumption; repeat constructor; reflexivity)
+                        : Γ, ¬p '-> q, ¬r |- ¬p '-> q)
+        in
+        modus_ponens lemma (mt_transform h_q)) in
+      modus_ponens lemma (by_contradiction r) : [Γ, ¬p '-> q |- r]);
   (* and_spec := _; *)
   (* and_distrib_or := _; *)
 
