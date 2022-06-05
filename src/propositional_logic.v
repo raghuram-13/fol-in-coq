@@ -3,57 +3,6 @@ Set Implicit Arguments. Unset Strict Implicit.
 Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
 Require Lattices.
 
-Section SomeLogic.
-Context [p q : Prop].
-
-Definition or_elim_left (h : p \/ q) (h_np : ~p) : q := match h with
-| or_introl h_p => False_ind q (h_np h_p)
-| or_intror h_q => h_q
-end.
-Definition or_elim_right (h : p \/ q) (h_nq : ~q) : p := match h with
-| or_introl h_p => h_p
-| or_intror h_q => False_ind p (h_nq h_q)
-end.
-
-(* sumbool as a class. *)
-Existing Class sumbool.
-(* From Coq.Bool Require Sumbool.
-Existing Instances Sumbool.sumbool_and Sumbool.sumbool_or. *)
-
-Instance sumbool_of_dec_left (h : p \/ q) (dec : {p}+{~p}) : {p}+{q} := match dec with
-| left h_p   => left h_p
-| right h_np => right (or_elim_left h h_np)
-end.
-Instance sumbool_of_dec_right (h : p \/ q) (dec : {q}+{~q}) : {p}+{q} := match dec with
-| left h_q   => right h_q
-| right h_nq => left (or_elim_right h h_nq)
-end.
-Instance sumbool_of_dec_either (h : p \/ q) (dec : ({p}+{~p}) + ({q}+{~q})) : {p}+{q} :=
-match dec with
-| inl dec_p => sumbool_of_dec_left h dec_p
-| inr dec_q => sumbool_of_dec_right h dec_q
-end.
-
-(* If either side of an `or` is known to be true or false, we can eliminate to Type. *)
-Section sumbool_or_elim.
-Context {dec : ({p}+{~p}) + ({q}+{~q})} (h : p \/ q).
-
-(* Unable to infer {p}+{q}: does not search for p \/ q, _ + _, as they are not typeclasses. *)
-
-Definition dec_or_rect {dec : ({p}+{~p}) + ({q}+{~q})}
-    alpha (left : p -> alpha) (right : q -> alpha) (h : p \/ q) : alpha :=
-match sumbool_of_dec_either h dec with
-| left h_p => left h_p
-| right h_q => right h_q
-end.
-
-Definition dec_or_rect_on (h : p \/ q) {dec : ({p}+{~p}) + ({q}+{~q})}
-    alpha (left : p -> alpha) (right : q -> alpha) : alpha :=
-dec_or_rect (dec := dec) left right h.
-
-End sumbool_or_elim.
-End SomeLogic.
-
 (* Limit scope of Variable declarations. They seem to be treated as some kind of
    axioms otherwise, whereas the intention is to parametrise future functions
    on them. *)
