@@ -121,16 +121,22 @@ Arguments Proof assumptions : clear implicits.
    type.*)
 Definition Provable assumptions (p : Proposition) : Prop := inhabited (Proof assumptions p).
 
-Local Notation "Γ |- p" := (Proof Γ p) (at level 75).
-Local Notation "|- p" := (Proof ∅ p) (at level 75).
+(* Proof notations *)
+Declare Scope proof_scope. Delimit Scope proof_scope with proof.
+Local Notation "Γ |- p"   := (Proof Γ p)      (at level 75) : proof_scope.
+Local Notation "|- p"     := (Proof ∅ p)      (at level 75) : proof_scope.
+Local Notation "; p |- q" := (Proof (eq p) q) (at level 75) : proof_scope.
 
 Local Notation "Γ , p , .. , q |- r" := (Proof ( .. (Γ ∪ eq p) .. ∪ eq q) r)
-    (at level 75, q at next level). (* prevent parsing (q |- r) as a subexpression *)
-Local Notation ", p , .. , q |- r" := (Proof ( .. (∅ ∪ eq p) .. ∪ eq q) r)
-    (at level 75, q at next level).
+    (* prevent parsing (q |- r) as a subexpression *)
+    (at level 75, q at next level) : proof_scope.
+Local Notation "; p0 , p , .. , q |- r" := (Proof ( .. (eq p0 ∪ eq p) .. ∪ eq q) r)
+    (at level 75, q at next level) : proof_scope.
 
 (* Wrap around any |- expression to turn `Proof` into `Provable`. *)
-Local Notation "[ type ]" := (inhabited type) : type_scope.
+Local Notation "[ proof ]" := (inhabited proof%proof) : type_scope.
+
+Open Scope proof_scope.
 
 Coercion has_proof (assumptions : unary_predicate Proposition) p
     : assumptions |- p -> [assumptions |- p] := @inhabits _.
