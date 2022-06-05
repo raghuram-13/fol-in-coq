@@ -97,6 +97,12 @@ Coercion has_proof (assumptions : Proposition -> Type) p
 
 Definition inconsistent (assumptions : Proposition -> Type) := [assumptions |- ⊥].
 
+(* Convenience function written on the fly for checking the size of proofs. *)
+Fixpoint size {Γ} {p} (proof : Γ |- p) : nat := match proof with
+| modus_ponens proof1 proof2 => 1 + (size proof1) + (size proof2)
+| _ => 1
+end.
+
 Section FactsAboutProofSystem.
 
 Section RelationBetweenDifferentAssumptions.
