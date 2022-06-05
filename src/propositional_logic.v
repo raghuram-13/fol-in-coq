@@ -213,33 +213,27 @@ end.
 
 Section SomeMoreLemmas.
 
+(* The deduction theorem can be easily used practically.
+   However, note that the the proof objects produced are very large - for
+   example, this proof has 161 'nodes' in its proof tree whereas a previous
+   version that used the deduction theorem only once due to inconvenience of
+   using it at that time only had 29 'nodes'. *)
 Definition interchange_hypotheses {Γ} p q r : Γ |- (p '-> q '-> r) '-> (q '-> p '-> r).
-apply (proof_of_proof_subset (Γ := ∅) (fun p => False_ind (p ∈ Γ))).
-(* To show: |- ... *)
-apply (deduction_theorem' (dec := fun p => inl (right (Datatypes.id : ~False)))).
-(* To show: , p '-> q '-> r |- q '-> p '-> r *)
-apply modus_ponens_under_imp with (hyp := p '-> q).
-+ apply rule_1.
-+ apply (add_under_imp q).
-  apply modus_ponens with (hyp := p '-> q '-> r).
-  - apply by_assumption. exact (or_intror eq_refl).
-  - apply rule_2.
+apply deduction_theorem. apply deduction_theorem. apply deduction_theorem.
+(* To show: ; p '-> q '-> r, q, p |- r *)
+let automatic := (apply by_assumption; repeat constructor; reflexivity) in
+( apply modus_ponens with (hyp := q); [ automatic |
+  apply modus_ponens with (hyp := p); [ automatic | automatic ]]).
 Defined.
 
 Definition modus_tollens {Γ} p q : Γ |- (p '-> q) '-> (¬q '-> ¬p).
 refine (modus_ponens _ (interchange_hypotheses _ _ _)).
-(* Remove the Γ. *)
-apply (proof_of_proof_subset (Γ := ∅) (fun p => False_ind (p ∈ Γ))).
-(* Take ¬q '-> ¬p to the assumptions. *)
-apply (deduction_theorem' (dec := fun p => inl (right (Datatypes.id : ~False)))).
+apply deduction_theorem.  (* take ¬q '-> ¬p to the assumptions. *)
 exact (modus_ponens (add_under_imp p (proof_refl (¬q))) (rule_2 _ _ _)).
 Defined.
 
 Definition modus_tollens_conv {Γ} p q : Γ |- (¬q '-> ¬p) '-> (p '-> q).
-(* Remove the Γ. *)
-apply (proof_of_proof_subset (Γ := ∅) (fun p => False_ind (p ∈ Γ))).
-(* Take ¬q '-> ¬p to the assumptions. *)
-apply (deduction_theorem' (dec := fun p => inl (right (Datatypes.id : ~False)))).
+apply deduction_theorem.
 refine (modus_ponens_under_imp _ (add_under_imp p (by_contradiction q))).
 exact (modus_ponens (proof_refl (¬q '-> ¬p)) (interchange_hypotheses (¬q) p ⊥)).
 Defined.
