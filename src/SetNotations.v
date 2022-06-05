@@ -22,3 +22,7 @@ Notation "A ⊆ B" := (predicate_implication (A : unary_predicate _) (B : unary_
                       (at level 70)                       : subset_scope.
 
 Open Scope subset_scope.
+
+(* Some other notations. *)
+Notation "A ⊔ B" := (pointwise_extension sum (Tcons _ Tnil) A B) (at level 67, left associativity) : function_scope.
+Notation "A ⊆' B" := (pointwise_extension Coq.Program.Basics.arrow (Tcons _ Tnil) A B) (at level 70) : function_scope.
