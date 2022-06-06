@@ -245,7 +245,14 @@ apply modus_ponens with (hyp := q). apply modus_ponens with (hyp := p).
 par:proof_assumption.
 Defined.
 
+Example impl_comp {Γ} p q r : Γ |- (q '-> r) '-> (p '-> q) '-> (p '-> r).
+apply deduction_theorem.
+apply (modus_ponens (rule_2 p q r)). apply deduction_theorem; proof_assumption.
+Defined.
+
 Definition modus_tollens {Γ} p q : Γ |- (p '-> q) '-> (¬q '-> ¬p).
+(* := modus_ponens (interchange_hypotheses _ _ _) (impl_comp p q ⊥). *)
+
 (* Take ¬q to the assumptions. *)
 apply (modus_ponens (interchange_hypotheses _ _ _)), deduction_theorem.
 apply (modus_ponens (rule_2 _ _ _)), (add_under_imp p).
@@ -260,9 +267,21 @@ proof_assumption.
 Defined.
 
 Definition exfalso {Γ} p : Γ |- ⊥ '-> p :=
-deduction_theorem (
-modus_ponens (by_contradiction p) (
-add_under_imp (¬p) (ltac:(proof_assumption) : Γ, ⊥ |- ⊥))).
+(* This commented-out proof is bigger than the used one because it creates
+   an unnecesarrily large proof in place of step_1.
+   TODO consider a converse deduction theorem to shift hypotheses back
+   and forth across the |-.  `apply (modus_ponens (proof_refl p))` can
+   change the goal to an implication but doesn't remove p from the
+   hypotheses.
+   `refine (modus_ponens _ (proof_refl p)); apply (proof_mono (fun _ h => inl h))`
+   might work, but that's verbose enough to state.
+      deduction_theorem (
+      modus_ponens (by_contradiction p) (
+      add_under_imp (¬p) (ltac:(proof_assumption) : Γ, ⊥ |- ⊥)))
+*)
+let step_1 : Γ |- ⊥ '-> ¬¬p := rule_1 ⊥ (¬p) in
+let step_2 : Γ |- ¬¬p '-> p := by_contradiction p in
+modus_ponens (modus_ponens (impl_comp _ _ _) step_2) step_1.
 
 Definition from_contradiction {Γ} p q : Γ |- ¬p '-> p '-> q :=
 modus_ponens (rule_2 p ⊥ q) (add_under_imp p (exfalso q)).
