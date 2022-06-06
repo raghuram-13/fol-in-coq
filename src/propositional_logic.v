@@ -97,11 +97,22 @@ Coercion has_proof (assumptions : Proposition -> Type) p
 
 Definition inconsistent (assumptions : Proposition -> Type) := [assumptions |- ⊥].
 
-Ltac proof_assumption := match goal with
-| [ |- [_ |- _] ] => apply has_proof; proof_assumption
-| [ |- ?Γ |- ?p ] => apply by_assumption; repeat constructor; (reflexivity + assumption)
-(* | [ |- _ ] => tryif progress simpl then proof_assumption else fail 1 *)
+(* Unexpected behaviour: tactic doesn't "solve or fail".
+    However, it appeared to select the "better" of two branches to
+    leave the goal state at, even compared to manually typing out its code.
+    Thus, leave it alone for now.
+   TODO consider forcing "solve or fail" behaviour using `solve`. *)
+Ltac proof_assumption hook := match goal with
+| |- [_ |- _] => apply has_proof; proof_assumption hook
+| |- _ |- _ => apply by_assumption; repeat (apply inl + apply inr); hook
 end.
+
+Tactic Notation "proof_assumption" "using" tactic(hook) :=
+(proof_assumption ltac:(assumption + reflexivity + hook)).
+Tactic Notation "proof_assumption" "using" "only" tactic(hook) :=
+(proof_assumption ltac:(hook)).
+Tactic Notation "proof_assumption" :=
+(proof_assumption ltac:(assumption + reflexivity)).
 
 (* Convenience function written on the fly for checking the size of proofs. *)
 Fixpoint size {Γ} {p} (proof : Γ |- p) : nat := match proof with
