@@ -328,30 +328,38 @@ Instance : PreOrder provable_le :=
 Definition LindenbaumTarksiAlgebra := {|
   preCarrier := {| le := provable_le |};
 
-  or p q := ¬p '-> q; and p q := ¬(p '-> ¬q);
-  or_spec p q r := conj
-    (fun h_or => conj
-      (provable_le_trans (modus_ponens (absurd p q) (ltac:(proof_assumption) : _, p |- p)) h_or)
-      (provable_le_trans (add_under_imp (¬p) (ltac:(proof_assumption) : _, q |- q)) h_or))
-    (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
-      modus_ponens (by_contradiction r) (
-      let mt_transform [p'] (proof : Γ, p' |- r) : Γ, ¬p '-> q, ¬r |- ¬p' :=
-          modus_ponens (modus_ponens (modus_tollens p' r)
-            (proof_mono (fun _ h => inl (inl h))
-              (deduction_theorem proof)))
-            (ltac:(proof_assumption) : _, ¬r |- ¬r) in
-      deduction_theorem (modus_ponens (mt_transform h_q) (
-      modus_ponens (ltac:(proof_assumption) : Γ, ¬p '-> q, ¬r |- ¬p '-> q)
-                   (mt_transform h_p))))));
-  (* and_spec := _; *)
-  (* and_distrib_or := _; *)
+  or p q := (p '-> q) '-> q; and p q := ¬(p '-> ¬q);
+  not p := ¬p; false := ⊥; true := ¬⊥;
 
-  false := ⊥; true := ¬⊥;
   false_spec p := modus_ponens (exfalso p) (ltac:(proof_assumption) : Γ, ⊥ |- ⊥);
   true_spec p := id ⊥;
 
-  not p := ¬p; or_not' p := id (¬p);
-  (* and_not' p := _ *)
+  or_spec p q r := conj
+    (fun h_or => ltac:(split
+        ; refine (provable_le_trans (deduction_theorem _) h_or);
+          [ eapply modus_ponens | .. ]; proof_assumption)
+      : [Γ, p |- r] /\ [Γ, q |- r])
+    (fun '(conj (inhabits h_p) (inhabits h_q)) =>
+      _);
+
+  and_spec p q r := conj
+    (fun h_and => conj
+      _
+      _)
+    (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
+      deduction_theorem (modus_ponens (hyp := q)
+        (modus_ponens (ltac:(proof_assumption) : Γ, r, p '-> ¬q |- p '-> ¬q)
+                      (proof_mono (fun _ h => inl h) h_p))
+        (proof_mono (fun _ h => inl h) h_q))));
+
+  and_not' p := ltac:(apply has_proof; eapply modus_ponens; [ |
+                do 2 eapply deduction_theorem; apply modus_ponens with (hyp := p)];
+                proof_assumption);
+  or_not' p := ltac:(apply has_proof; do 2 eapply deduction_theorem;
+                     do 2 [> apply modus_ponens with (hyp := p) |..];
+                    proof_assumption)
+
+  (* and_distrib_or := _; *)
 |}.
 
 End BooleanAlgebra.
