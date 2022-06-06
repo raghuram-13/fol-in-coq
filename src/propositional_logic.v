@@ -57,7 +57,7 @@ Inductive Proof : Proposition -> Type :=
 | rule_1 p q : Proof (p '-> q '-> p)
 | rule_2 p q r : Proof ((p '-> q '-> r) '-> (p '-> q) '-> (p '-> r))
 | by_contradiction p : Proof (¬¬p '-> p)
-| modus_ponens hyp concl : Proof hyp -> Proof (hyp '-> concl) -> Proof concl.
+| modus_ponens hyp concl : Proof (hyp '-> concl) -> Proof hyp -> Proof concl.
 (* {assumptions} ensured all constructors infer it automatically.
    But we don't want the type itself to do that! *)
 
@@ -190,19 +190,18 @@ let step_1 : Γ |- p '-> (p '-> p) '-> p         := rule_1 p (p '-> p) in
 let step_2 : Γ |- p '-> p '-> p                 := rule_1 p p in
 let step_3 : Γ |- (p '-> (p '-> p) '-> p) '-> (p '-> p '-> p) '-> (p '-> p)
                                                 := rule_2 p (p '-> p) p in
-let step_4 : Γ |- (p '-> p '-> p) '-> (p '-> p) := modus_ponens step_1 step_3 in
-modus_ponens step_2 step_4.
+let step_4 : Γ |- (p '-> p '-> p) '-> (p '-> p) := modus_ponens step_3 step_1 in
+modus_ponens step_4 step_2.
 
-Definition add_under_imp p q (proof : Γ |- q) : Γ |- (p '-> q) :=
-let step_1 : Γ |- q '-> p '-> q := rule_1 q p in
-modus_ponens proof step_1.
+Definition add_under_imp p q : Γ |- q -> Γ |- (p '-> q) :=
+modus_ponens (rule_1 q p : Γ |- q '-> p '-> q).
 
 Definition modus_ponens_under_imp p hyp concl
-    : let P' q := Γ |- (p '-> q) in   P' hyp -> P' (hyp '-> concl) -> P' concl :=
-fun proof_hyp proof_imp =>
+    : let P' q := Γ |- (p '-> q) in   P' (hyp '-> concl) -> P' hyp -> P' concl :=
+fun proof_imp proof_hyp =>
 let step_1 : Γ |- (p '-> hyp '-> concl) '-> (p '-> hyp) '-> (p '-> concl) := rule_2 p hyp concl in
-let step_2 := modus_ponens proof_imp step_1 in
-modus_ponens proof_hyp step_2.
+let step_2 := modus_ponens step_1 proof_imp in
+modus_ponens step_2 proof_hyp.
 
 End SomeLemmas.
 
@@ -227,32 +226,32 @@ Section SomeMoreLemmas.
 Definition interchange_hypotheses {Γ} p q r : Γ |- (p '-> q '-> r) '-> (q '-> p '-> r).
 apply deduction_theorem. apply deduction_theorem. apply deduction_theorem.
 (* To show: ; p '-> q '-> r, q, p |- r *)
-let automatic := (apply by_assumption; repeat constructor; reflexivity) in
-( apply modus_ponens with (hyp := q); [ automatic |
-  apply modus_ponens with (hyp := p); [ automatic | automatic ]]).
+apply modus_ponens with (hyp := q). apply modus_ponens with (hyp := p).
+par:(apply by_assumption; repeat constructor; reflexivity).
 Defined.
 
 Definition modus_tollens {Γ} p q : Γ |- (p '-> q) '-> (¬q '-> ¬p).
-refine (modus_ponens _ (interchange_hypotheses _ _ _)).
+apply (modus_ponens (interchange_hypotheses _ _ _)).
 apply deduction_theorem.  (* take ¬q '-> ¬p to the assumptions. *)
-exact (modus_ponens (add_under_imp p (proof_refl (¬q))) (rule_2 _ _ _)).
+exact (modus_ponens (rule_2 _ _ _) (add_under_imp p (proof_refl (¬q)))).
 Defined.
 
 Definition modus_tollens_conv {Γ} p q : Γ |- (¬q '-> ¬p) '-> (p '-> q).
 apply deduction_theorem.
-refine (modus_ponens_under_imp _ (add_under_imp p (by_contradiction q))).
-exact (modus_ponens (proof_refl (¬q '-> ¬p)) (interchange_hypotheses (¬q) p ⊥)).
+apply (modus_ponens_under_imp (add_under_imp p (by_contradiction q))).
+exact (modus_ponens (interchange_hypotheses (¬q) p ⊥) (proof_refl (¬q '-> ¬p))).
 Defined.
 
 Definition exfalso {Γ} p : Γ |- ⊥ '-> p :=
-let intermediate : Γ |- ¬p '-> ¬⊥ := add_under_imp (¬p) (id ⊥) in
-modus_ponens intermediate (modus_tollens_conv ⊥ p).
+deduction_theorem (
+modus_ponens (by_contradiction p) (
+add_under_imp (¬p) (proof_refl ⊥))).
 
 Definition from_contradiction {Γ} p q : Γ |- ¬p '-> p '-> q :=
-modus_ponens (add_under_imp p (exfalso q)) (rule_2 p ⊥ q).
+modus_ponens (rule_2 p ⊥ q) (add_under_imp p (exfalso q)).
 
 Definition absurd {Γ} p q : Γ |- p '-> ¬p '-> q :=
-modus_ponens (from_contradiction p q) (interchange_hypotheses (¬p) p q).
+modus_ponens (interchange_hypotheses (¬p) p q) (from_contradiction p q).
 
 End SomeMoreLemmas.
 
@@ -262,7 +261,7 @@ Section Soundness.
 
 Theorem soundness_theorem (Γ : unary_predicate Proposition) p : [Γ |- p] -> Γ ⊨ p.
 intros (proof) v h.
-induction proof as [p h_in|p q|p q r|p|p q h_p h_i_p h_imp h_i_imp]; [
+induction proof as [p h_in|p q|p q r|p|p q h_imp h_i_imp h_p h_i_p]; [
   (* by_assumption *)
   exact (h _ h_in)
   (* Takes care of no-hypothesis introduction rules. *)
@@ -314,28 +313,24 @@ Definition LindenbaumTarksiAlgebra := {|
   or p q := ¬p '-> q; and p q := ¬(p '-> ¬q);
   or_spec p q r := conj
     (fun h_or => conj
-      (provable_le_trans (modus_ponens (proof_refl p) (absurd p q)) h_or)
+      (provable_le_trans (modus_ponens (absurd p q) (proof_refl p)) h_or)
       (provable_le_trans (add_under_imp (¬p) (proof_refl q)) h_or))
-    (fun '(conj (inhabits h_p) (inhabits h_q)) =>
-      let lemma : Γ, ¬p '-> q |- ¬¬r :=
-        deduction_theorem (
-        let mt_transform [p'] (proof : Γ, p' |- r) : Γ, ¬p '-> q, ¬r |- ¬p' :=
-          modus_ponens (proof_refl (¬r)) (
-          modus_ponens (proof_mono (fun _ h => inl (inl h))
-                         (deduction_theorem proof))
-                       (modus_tollens p' r)) in
-        let lemma : Γ, ¬p '-> q, ¬r |- q :=
-          modus_ponens (mt_transform h_p)
-                       (ltac:(apply by_assumption; repeat constructor; reflexivity)
-                        : Γ, ¬p '-> q, ¬r |- ¬p '-> q)
-        in
-        modus_ponens lemma (mt_transform h_q)) in
-      modus_ponens lemma (by_contradiction r) : [Γ, ¬p '-> q |- r]);
+    (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
+      modus_ponens (by_contradiction r) (
+      let mt_transform [p'] (proof : Γ, p' |- r) : Γ, ¬p '-> q, ¬r |- ¬p' :=
+          modus_ponens (modus_ponens (modus_tollens p' r)
+            (proof_mono (fun _ h => inl (inl h))
+              (deduction_theorem proof)))
+            (proof_refl (¬r)) in
+      deduction_theorem (modus_ponens (mt_transform h_q) (
+      modus_ponens (ltac:(apply by_assumption; repeat constructor; reflexivity)
+                     : Γ, ¬p '-> q, ¬r |- ¬p '-> q)
+                   (mt_transform h_p))))));
   (* and_spec := _; *)
   (* and_distrib_or := _; *)
 
   false := ⊥; true := ¬⊥;
-  false_spec p := modus_ponens (proof_refl ⊥) (exfalso p);
+  false_spec p := modus_ponens (exfalso p) (proof_refl ⊥);
   true_spec p := id ⊥;
 
   not p := ¬p; or_not' p := id (¬p);
