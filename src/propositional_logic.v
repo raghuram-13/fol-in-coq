@@ -78,12 +78,12 @@ Arguments Provable assumptions : clear implicits.
 Declare Scope proof_scope. Delimit Scope proof_scope with proof.
 Local Notation "Γ |- p"   := (Proof Γ p)      (at level 75) : proof_scope.
 Local Notation "|- p"     := (Proof ∅ p)      (at level 75) : proof_scope.
-Local Notation "; p |- q" := (Proof (eq p) q) (at level 75) : proof_scope.
+Local Notation ";; p |- q" := (Proof (eq p) q) (at level 75) : proof_scope.
 
-Local Notation "Γ , p , .. , q |- r" := (Proof ( .. (Γ ⊔ eq p) .. ⊔ eq q) r)
+Local Notation "Γ ;; p ; .. ; q |- r" := (Proof ( .. (Γ ⊔ eq p) .. ⊔ eq q) r)
     (* prevent parsing (q |- r) as a subexpression *)
     (at level 75, q at next level) : proof_scope.
-Local Notation "; p0 , p , .. , q |- r" := (Proof ( .. (eq p0 ⊔ eq p) .. ⊔ eq q) r)
+Local Notation ";; p0 ; p ; .. ; q |- r" := (Proof ( .. (eq p0 ⊔ eq p) .. ⊔ eq q) r)
     (at level 75, q at next level) : proof_scope.
 
 (* Wrap around any |- expression to turn `Proof` into `Provable`. *)
@@ -144,9 +144,9 @@ proof_trans (fun p (h' : Γ p + Γ' p) => match h' with
              | inr h_in' => h h_in'
             end).
 
-Definition proof_mono [Γ Γ'] (h : forall [p], Γ p -> Γ' p)
+Definition proof_mono [Γ Γ'] (h : Γ ⊑ Γ')
     : forall [p], Γ |- p -> Γ' |- p :=
-proof_trans (fun p (h' : Γ p) => by_assumption (h h')).
+proof_trans (fun p (h' : Γ p) => by_assumption (h _ h')).
 
 Definition provable_trans' Γ Γ' (h : forall [p], Γ' p -> [Γ |- p])
     p (proof : [Γ ⊔ Γ' |- p]) : [Γ |- p] :=
@@ -160,38 +160,37 @@ let (proof) := proof in
  | rule_1 p q                 => rule_1 p q
  | rule_2 p q r               => rule_2 p q r
  | by_contradiction p         => by_contradiction p
- | modus_ponens proof1 proof2 => let (proof1') := proof_trans' proof1 in
-                                 let (proof2') := proof_trans' proof2 in
-                                 modus_ponens proof1' proof2'
+ | modus_ponens p1 p2         => match proof_trans' p1, proof_trans' p2 with
+                                 | inhabits p1, inhabits p2 => modus_ponens p1 p2
+                                 end
  end) p proof.
 
 Definition provable_trans Γ Γ' (h : forall [p], Γ' p -> [Γ |- p])
     p (proof : [Γ' |- p]) : [Γ |- p] :=
 provable_trans' h (let (proof) := proof in
-                   proof_mono (fun p (h : Γ' p) => inr h : (Γ ⊔ Γ') p) proof).
+                   proof_mono (fun _ h => inr h) proof).
 
 Section test.
 (* It is slightly verbose, but we _can_ show these results for appending a
    few propositions to Γ using `proof_trans'`/`provable_trans'` reasonably. *)
 Check fun Γ p (proof : Γ |- p) =>
-  proof_trans' (eq_rect p _ proof) : forall q, Γ, p |- q -> Γ |- q.
+  proof_trans' (eq_rect p _ proof) : forall q, Γ;; p |- q -> Γ |- q.
 Check fun Γ p q
-        (proof1 : Γ |- p) (proof2 : Γ, p |- q) =>
+        (proof1 : Γ |- p) (proof2 : Γ;; p |- q) =>
   (fun r proof3 =>
     proof_trans' (eq_rect p _ proof1) (
     proof_trans' (eq_rect q _ proof2)
     proof3))
-  : forall r, Γ, p, q |- r -> Γ |- r.
+  : forall r, Γ;; p; q |- r -> Γ |- r.
 Check fun Γ p q
-        (proof1 : Γ |- p) (proof2 : [Γ, p |- q]) =>
+        (proof1 : Γ |- p) (proof2 : [Γ;; p |- q]) =>
   (fun r proof3 =>
     let (proof_intermediate) := provable_trans' (eq_rect q _ proof2) proof3 in
     proof_trans' (eq_rect p _ proof1) proof_intermediate)
-  : forall r, [Γ, p, q |- r] -> [Γ |- r].
+  : forall r, [Γ;; p; q |- r] -> [Γ |- r].
 End test.
 
 End Transitivity.
-
 
 End RelationBetweenDifferentAssumptions.
 
@@ -220,13 +219,13 @@ modus_ponens step_2 proof_hyp.
 
 End SomeLemmas.
 
-Fixpoint deduction_theorem {Γ} {hyp} [concl] (proof : Γ, hyp |- concl)
+Fixpoint deduction_theorem {Γ} {hyp} [concl] (proof : Γ;; hyp |- concl)
     : Γ |- hyp '-> concl := match proof with
 | by_assumption (inl h)      => add_under_imp hyp (by_assumption h)
 | by_assumption (inr h)      => rew dependent h in id hyp
 | rule_1 _ _                 => add_under_imp hyp (rule_1 _ _)
 | rule_2 _ _ _               => add_under_imp hyp (rule_2 _ _ _)
-| by_contradiction _         => add_under_imp hyp (by_contradiction (assumptions := Γ) _)
+| by_contradiction _         => add_under_imp hyp (by_contradiction _)
 | modus_ponens proof1 proof2 => modus_ponens_under_imp (deduction_theorem proof1)
                                                        (deduction_theorem proof2)
 end.
@@ -240,7 +239,7 @@ Section SomeMoreLemmas.
    using it at that time only had 29 'nodes'. *)
 Definition interchange_hypotheses {Γ} p q r : Γ |- (p '-> q '-> r) '-> (q '-> p '-> r).
 do 3 apply deduction_theorem.
-(* To show: ; p '-> q '-> r, q, p |- r *)
+(* To show: Γ;; p '-> q '-> r; q; p |- r *)
 apply modus_ponens with (hyp := q). apply modus_ponens with (hyp := p).
 par:proof_assumption.
 Defined.
@@ -277,7 +276,7 @@ Definition exfalso {Γ} p : Γ |- ⊥ '-> p :=
    might work, but that's verbose enough to state.
       deduction_theorem (
       modus_ponens (by_contradiction p) (
-      add_under_imp (¬p) (ltac:(proof_assumption) : Γ, ⊥ |- ⊥)))
+      add_under_imp (¬p) (ltac:(proof_assumption) : Γ;; ⊥ |- ⊥)))
 *)
 let step_1 : Γ |- ⊥ '-> ¬¬p := rule_1 ⊥ (¬p) in
 let step_2 : Γ |- ¬¬p '-> p := by_contradiction p in
@@ -321,7 +320,7 @@ Import Lattices.
 Import Coq.Classes.RelationClasses (Reflexive, Transitive, PreOrder).
 Context {Γ : Proposition -> Type}.
 
-Definition provable_le p q := [Γ, p |- q].
+Definition provable_le p q := [Γ;; p |- q].
 
 Definition provable_le_refl : Reflexive provable_le := fun _ =>
 ltac:(unfold provable_le; proof_assumption).
@@ -329,14 +328,14 @@ ltac:(unfold provable_le; proof_assumption).
 Definition provable_le_trans : Transitive provable_le :=
 fun p q r proof1 proof2 =>
 (* provable_trans' (fun q' (h : (Γ ⊔ eq q) q') => match h with
-                | inl h => ltac:(proof_assumption) : Γ, p |- q'
+                | inl h => ltac:(proof_assumption) : Γ;; p |- q'
                 | inr h => rew h in proof1
                 end)
     (let (proof2) := proof2 in
-      proof_mono ((fun _ h => inr h) (* : Γ ⊔ eq q ⊆' (Γ ⊔ eq p) ⊔ (Γ ⊔ eq q) *))
+      proof_mono ((fun _ h => inr h) : Γ ⊔ eq q ⊑ (Γ ⊔ eq p) ⊔ (Γ ⊔ eq q))
           proof2) *)
 provable_trans (fun q' (h : (Γ ⊔ eq q) q') => match h with
-                | inl h => ltac:(proof_assumption) : Γ, p |- q'
+                | inl h => ltac:(proof_assumption using only exact h) : Γ;; p |- q'
                 | inr h => rew h in proof1
                 end) proof2.
 
@@ -350,14 +349,14 @@ Definition LindenbaumTarksiAlgebra := {|
   or p q := (p '-> q) '-> q; and p q := ¬(p '-> ¬q);
   not p := ¬p; false := ⊥; true := ¬⊥;
 
-  false_spec p := modus_ponens (exfalso p) (ltac:(proof_assumption) : Γ, ⊥ |- ⊥);
+  false_spec p := modus_ponens (exfalso p) proof_refl;
   true_spec p := id ⊥;
 
   or_spec p q r := conj
     (fun h_or => ltac:(split
         ; refine (provable_le_trans (deduction_theorem _) h_or);
           [ eapply modus_ponens | .. ]; proof_assumption)
-      : [Γ, p |- r] /\ [Γ, q |- r])
+      : [Γ;; p |- r] /\ [Γ;; q |- r])
     (fun '(conj (inhabits h_p) (inhabits h_q)) =>
       _);
 
@@ -367,7 +366,7 @@ Definition LindenbaumTarksiAlgebra := {|
       _)
     (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
       deduction_theorem (modus_ponens (hyp := q)
-        (modus_ponens (ltac:(proof_assumption) : Γ, r, p '-> ¬q |- p '-> ¬q)
+        (modus_ponens (ltac:(proof_assumption) : Γ;; r; p '-> ¬q |- p '-> ¬q)
                       (proof_mono (fun _ h => inl h) h_p))
         (proof_mono (fun _ h => inl h) h_q))));
 

@@ -23,6 +23,30 @@ Notation "A ⊆ B" := (predicate_implication (A : unary_predicate _) (B : unary_
 
 Open Scope subset_scope.
 
+Module MyExtensions. Module Classes. Module RelationClasses.
+Section ForVariables.
+Context [T : Type] (op : T -> T -> Type).
+
+Fixpoint arrows_all (l : Tlist) : arrows l Type -> Type := match l with
+| Tnil      => id (A := Type)
+| Tcons _ l => fun R => forall x, arrows_all l (R x)
+end.
+
+Fixpoint arrows_some (l : Tlist) : arrows l Type -> Type := match l with
+| Tnil      => id (A := Type)
+| Tcons _ l => fun R => {x & arrows_some l (R x)}
+end.
+
+Fixpoint pointwise_lifting' {l : Tlist} :=
+match l as l return arrows l T -> arrows l T -> Type with
+| Tnil      => fun R R' : arrows Tnil T => op R R'
+| Tcons _ l => fun R R' => forall x, pointwise_lifting' (R x) (R' x)
+end.
+
+End ForVariables.
+End RelationClasses. End Classes. End MyExtensions.
+Import MyExtensions.Classes.RelationClasses.
+
 (* Some other notations. *)
 Notation "A ⊔ B" := (pointwise_extension sum (Tcons _ Tnil) A B) (at level 67, left associativity) : function_scope.
-Notation "A ⊆' B" := (pointwise_extension Coq.Program.Basics.arrow (Tcons _ Tnil) A B) (at level 70) : function_scope.
+Notation "A ⊑ B" := (pointwise_lifting' Coq.Program.Basics.arrow (l := Tcons _ Tnil) A B) (at level 70) : function_scope.
