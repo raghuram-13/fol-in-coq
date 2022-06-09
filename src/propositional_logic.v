@@ -122,6 +122,9 @@ end.
 
 Section FactsAboutProofSystem.
 
+Definition proof_refl {Γ p} : Γ;; p |- p := ltac:(proof_assumption).
+#[global] Arguments proof_refl {Γ p}, [Γ] p.
+
 Section RelationBetweenDifferentAssumptions.
 Implicit Type (Γ : Proposition -> Type).
 
@@ -322,8 +325,7 @@ Context {Γ : Proposition -> Type}.
 
 Definition provable_le p q := [Γ;; p |- q].
 
-Definition provable_le_refl : Reflexive provable_le := fun _ =>
-ltac:(unfold provable_le; proof_assumption).
+Definition provable_le_refl : Reflexive provable_le := @proof_refl Γ.
 
 Definition provable_le_trans : Transitive provable_le :=
 fun p q r proof1 proof2 =>
@@ -366,7 +368,7 @@ Definition LindenbaumTarksiAlgebra := {|
       _)
     (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
       deduction_theorem (modus_ponens (hyp := q)
-        (modus_ponens (ltac:(proof_assumption) : Γ;; r; p '-> ¬q |- p '-> ¬q)
+        (modus_ponens proof_refl
                       (proof_mono (fun _ h => inl h) h_p))
         (proof_mono (fun _ h => inl h) h_q))));
 
