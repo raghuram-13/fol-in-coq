@@ -34,6 +34,7 @@ Local Notation "¬ p" := (neg p) (at level 35, p at level 35).
 
 
 (* Semantics *)
+
 Definition valuation := VarIndex -> bool.
 
 Fixpoint models' (v : valuation) (p : Proposition) : bool := match p with
@@ -50,6 +51,7 @@ Definition entails (Γ : unary_predicate Proposition) p := forall v : valuation,
 Local Notation "Γ ⊨ p" := (entails Γ p) (at level 75).
 
 Definition unsound (Γ : unary_predicate Proposition) := Γ ⊨ ⊥.
+
 
 (* Proofs *)
 
@@ -77,6 +79,7 @@ End InductiveDefs.
 Arguments Proof assumptions : clear implicits.
 Arguments Provable assumptions : clear implicits.
 
+
 (* Proof notations *)
 Declare Scope proof_scope. Delimit Scope proof_scope with proof.
 Local Notation "Γ |- p"   := (Proof Γ p)      (at level 75) : proof_scope.
@@ -96,6 +99,7 @@ Open Scope proof_scope.
 
 
 (* Miscellany about proofs *)
+
 Coercion has_proof (assumptions : Proposition -> Type) p
     : assumptions |- p -> [assumptions |- p] := @inhabits _.
 
