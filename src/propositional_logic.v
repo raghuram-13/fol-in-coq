@@ -3,6 +3,9 @@ Set Implicit Arguments.
 Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
 Require Lattices.
 
+(* Miscellany *)
+Ltac done := let n := numgoals in guard n = 0.
+
 (* Limit scope of Variable declarations. They seem to be treated as some kind of
    axioms otherwise, whereas the intention is to parametrise future functions
    on them. *)
@@ -53,7 +56,7 @@ Definition unsound (Γ : unary_predicate Proposition) := Γ ⊨ ⊥.
 Section InductiveDefs. Context {assumptions : Proposition -> Type}.
 (* The type of proofs of a given Proposition. *)
 Inductive Proof : Proposition -> Type :=
-| by_assumption [p] : assumptions p -> Proof p
+| by_assumption {p} : assumptions p -> Proof p
 | rule_1 p q : Proof (p '-> q '-> p)
 | rule_2 p q r : Proof ((p '-> q '-> r) '-> (p '-> q) '-> (p '-> r))
 | by_contradiction p : Proof (¬¬p '-> p)
@@ -92,21 +95,40 @@ Local Notation "[ proof ]" := (inhabited proof%proof) : type_scope.
 Open Scope proof_scope.
 
 
+(* Miscellany about proofs *)
 Coercion has_proof (assumptions : Proposition -> Type) p
     : assumptions |- p -> [assumptions |- p] := @inhabits _.
 
 Definition inconsistent (assumptions : Proposition -> Type) := [assumptions |- ⊥].
 
-(* Unexpected behaviour: tactic doesn't "solve or fail".
-    However, it appeared to select the "better" of two branches to
-    leave the goal state at, even compared to manually typing out its code.
-    Thus, leave it alone for now.
-   TODO consider forcing "solve or fail" behaviour using `solve`. *)
+(** Tactics **)
+
+Ltac detect_assumption hook := repeat (apply inl + apply inr); hook.
+
+(* TODO consider forcing "solve or fail" behaviour using `solve`. *)
 Ltac proof_assumption hook := match goal with
 | |- [_ |- _] => apply has_proof; proof_assumption hook
-| |- _ |- _ => apply by_assumption; repeat (apply inl + apply inr); hook
+| |- _ |- _ => apply by_assumption; detect_assumption hook
 end.
 
+(* Helps in constructing gaols of the form (Γ p) where Γ is of the kind
+   usually encountered here: in particular, deals specially with ⊔ and eq. *)
+Tactic Notation "detect_assumption" "using" tactic(hook) :=
+(detect_assumption ltac:(assumption + reflexivity + hook)).
+Tactic Notation "detect_assumption" "using" "only" tactic(hook) :=
+(detect_assumption ltac:(hook)).
+Tactic Notation "detect_assumption" :=
+(detect_assumption ltac:(assumption + reflexivity)).
+
+(* proof_assumption automates constructing proofs of statements by
+   assumption, especially when the set of assumptions consists of
+   multiple sets joined by ⊔.
+
+   It can be passed a tactic `hook` with the syntax
+      proof_assumption using <hook>
+   to construct the assumption proof.  This will automatically try
+   some 'obvious' tactics first (`assumption` and `reflexivity`); to
+   disable this, use `proof_assumption using only <hook>`. *)
 Tactic Notation "proof_assumption" "using" tactic(hook) :=
 (proof_assumption ltac:(assumption + reflexivity + hook)).
 Tactic Notation "proof_assumption" "using" "only" tactic(hook) :=
@@ -114,13 +136,34 @@ Tactic Notation "proof_assumption" "using" "only" tactic(hook) :=
 Tactic Notation "proof_assumption" :=
 (proof_assumption ltac:(assumption + reflexivity)).
 
+(* Use instead of intro when introducing an assumption of some assumption set.
+   Automatically does case analysis for assumption sets using ⊔ and for
+   assumptions of the form `eq p`, reduces to constructing whatever for `p`. *)
+Ltac intro_assumption :=
+let x := fresh "assumption" in
+(* We need h to refer to different hypotheses at different times, and this is
+   the only way I can figure out to do it. *)
+let rec rec h :=
+  let decompose_sum h1 h2 := match type of h with
+    | sum _ _ => destruct h as [h1|h2] end in
+  let h1 := fresh "is_assumption" in let h2 := fresh "is_assumption" in
+  tryif (decompose_sum h1 h2 + (simpl in h; decompose_sum h1 h2)) then
+    [> rec h1 | rec h2 ]
+  else (* after repeat *) match type of h with | _ = _ => induction h
+                              | _ => idtac end
+in
+let h := fresh "is_assumption" in
+intros x h; rec h.
+
+
 (* Convenience function written on the fly for checking the size of proofs. *)
 Fixpoint size {Γ} {p} (proof : Γ |- p) : nat := match proof with
 | modus_ponens proof1 proof2 => 1 + (size proof1) + (size proof2)
 | _ => 1
 end.
 
-Section FactsAboutProofSystem.
+
+(* Properties of this proof system. *)
 
 Definition proof_refl {Γ p} : Γ;; p |- p := ltac:(proof_assumption).
 #[global] Arguments proof_refl {Γ p}, [Γ] p.
@@ -128,7 +171,7 @@ Definition proof_refl {Γ p} : Γ;; p |- p := ltac:(proof_assumption).
 Section RelationBetweenDifferentAssumptions.
 Implicit Type (Γ : Proposition -> Type).
 
-Section Transitivity.
+(** Transitivity **)
 
 Fixpoint proof_trans Γ Γ' (h : forall [p], Γ' p -> Γ |- p)
     [p] (proof : Γ' |- p) : Γ |- p := match proof with
@@ -142,10 +185,7 @@ end.
 
 Definition proof_trans' Γ Γ' (h : forall [p], Γ' p -> Γ |- p)
     : forall [p], Γ ⊔ Γ' |- p -> Γ |- p :=
-proof_trans (fun p (h' : Γ p + Γ' p) => match h' with
-             | inl h_in  => by_assumption h_in
-             | inr h_in' => h h_in'
-            end).
+proof_trans (fun p => sum_rect (fun _ => Γ |- p) by_assumption (h (p := p))).
 
 Definition proof_mono [Γ Γ'] (h : Γ ⊑ Γ')
     : forall [p], Γ |- p -> Γ' |- p :=
@@ -193,12 +233,14 @@ Check fun Γ p q
   : forall r, [Γ;; p; q |- r] -> [Γ |- r].
 End test.
 
-End Transitivity.
-
 End RelationBetweenDifferentAssumptions.
 
-Section SomeLemmas.
-Context {Γ : Proposition -> Type}.
+(* Just so happens that these lemmas share the same Γ, so a section works. *)
+Section SomeLemmas. Context {Γ : Proposition -> Type}.
+
+Definition modus_ponens_binary p q r (implication : Γ |- p '-> q '-> r)
+    : Γ |- p -> Γ |-q -> Γ |- r :=
+fun proof1 proof2 => modus_ponens (modus_ponens implication proof1) proof2.
 
 (* We prove a few results in a syntax resembling, e.g., Hilbert-style
    proofs, just to show we can. *)
@@ -214,88 +256,93 @@ Definition add_under_imp p q : Γ |- q -> Γ |- (p '-> q) :=
 modus_ponens (rule_1 q p : Γ |- q '-> p '-> q).
 
 Definition modus_ponens_under_imp p hyp concl
-    : let P' q := Γ |- (p '-> q) in   P' (hyp '-> concl) -> P' hyp -> P' concl :=
-fun proof_imp proof_hyp =>
-let step_1 : Γ |- (p '-> hyp '-> concl) '-> (p '-> hyp) '-> (p '-> concl) := rule_2 p hyp concl in
-let step_2 := modus_ponens step_1 proof_imp in
-modus_ponens step_2 proof_hyp.
+    : let P q := Γ |- (p '-> q) in   P (hyp '-> concl) -> P hyp -> P concl :=
+modus_ponens_binary (rule_2 p hyp concl).
 
 End SomeLemmas.
 
-Fixpoint deduction_theorem {Γ} {hyp} [concl] (proof : Γ;; hyp |- concl)
+
+(* Sometimes it's easier to show `Γ;; p |- q` and sometimes it's easier
+   to show `Γ |- p '-> q`. This allows us to reach `concl` from `leaves`
+   in the first mode and reach `leaves` in the second. *)
+Fixpoint deduction_theorem' {Γ} [leaves] [hyp concl]
+        (proof : Γ ⊔ eq hyp ⊔ leaves |- concl)
+        (subproofs: forall [q], leaves q -> Γ |- hyp '-> q)
     : Γ |- hyp '-> concl := match proof with
-| by_assumption (inl h)      => add_under_imp hyp (by_assumption h)
-| by_assumption (inr h)      => rew dependent h in id hyp
+| by_assumption (inr h)       => subproofs h
+| by_assumption (inl (inr h)) => rew dependent h in id hyp
+| by_assumption (inl (inl h)) => add_under_imp hyp (by_assumption h)
 | rule_1 _ _                 => add_under_imp hyp (rule_1 _ _)
 | rule_2 _ _ _               => add_under_imp hyp (rule_2 _ _ _)
 | by_contradiction _         => add_under_imp hyp (by_contradiction _)
-| modus_ponens proof1 proof2 => modus_ponens_under_imp (deduction_theorem proof1)
-                                                       (deduction_theorem proof2)
+| modus_ponens proof1 proof2 => modus_ponens_under_imp
+                                  (deduction_theorem' proof1 subproofs)
+                                  (deduction_theorem' proof2 subproofs)
 end.
 
-Section SomeMoreLemmas.
+Definition deduction_theorem {Γ} [hyp concl] proof : Γ |- hyp '-> concl :=
+deduction_theorem' (leaves := ∅) (proof_mono (fun _ h => inl h) proof)
+                                 (fun _ => False_rect _).
 
-(* The deduction theorem can be easily used practically.
-   However, note that the the proof objects produced are very large - for
-   example, this proof has 161 'nodes' in its proof tree whereas a previous
-   version that used the deduction theorem only once due to inconvenience of
-   using it at that time only had 29 'nodes'. *)
-Definition interchange_hypotheses {Γ} p q r : Γ |- (p '-> q '-> r) '-> (q '-> p '-> r).
-do 3 apply deduction_theorem.
-(* To show: Γ;; p '-> q '-> r; q; p |- r *)
-apply modus_ponens with (hyp := q). apply modus_ponens with (hyp := p).
-par:proof_assumption.
+Definition deduction_theorem_conv {Γ} [hyp concl]
+    (proof : Γ |- hyp '-> concl) : Γ;; hyp |- concl :=
+modus_ponens (proof_mono (fun _ h => inl h) proof) (proof_refl hyp).
+
+
+(* Using deduction_theorem' conveniently. *)
+Ltac reducing_deduction_theorem leaves' tactic :=
+apply deduction_theorem' with (leaves := leaves'); [
+  tactic; proof_assumption; done
+  | intro_assumption
+].
+
+Tactic Notation "red_by_dt" "to" constr(leaves) "by" tactic(tactic) :=
+reducing_deduction_theorem constr:(leaves) ltac:(tactic).
+Tactic Notation "red_by_dt" "by" tactic(tactic) :=
+reducing_deduction_theorem _ ltac:(tactic).
+Tactic Notation "red_by_dt" "to" constr(leaves) :=
+reducing_deduction_theorem leaves ltac:(idtac).
+Tactic Notation "red_by_dt" := reducing_deduction_theorem _ ltac:(idtac).
+
+
+Definition interchange_hypotheses_e {Γ} p q r : Γ;; p '-> q '-> r |- q '-> p '-> r.
+red_by_dt to (eq (p '-> q)) by eapply modus_ponens_under_imp.
+exact (rule_1 q p).
 Defined.
 
-Example impl_comp {Γ} p q r : Γ |- (q '-> r) '-> (p '-> q) '-> (p '-> r).
+Definition exfalso {Γ} p : Γ |- ⊥ '-> p.
+red_by_dt to (eq (¬¬p)) by apply (modus_ponens (by_contradiction p)).
+exact (rule_1 ⊥ (¬p)).
+Defined.
+
+Definition from_contradiction {Γ} p q : Γ |- ¬p '-> p '-> q :=
+modus_ponens (rule_2 p ⊥ q) (deduction_theorem (exfalso q)).
+
+Definition absurd p q {Γ} : Γ |- p '-> ¬p '-> q :=
+proof_trans' (Γ' := eq (¬p '-> p '-> q))
+  ltac:(intro_assumption; exact (from_contradiction p q))
+  (interchange_hypotheses_e (¬p) p q).
+
+Definition impl_comp {Γ} p q r : Γ |- (q '-> r) '-> (p '-> q) '-> (p '-> r).
 apply deduction_theorem.
 apply (modus_ponens (rule_2 p q r)). apply deduction_theorem; proof_assumption.
 Defined.
 
-Definition modus_tollens {Γ} p q : Γ |- (p '-> q) '-> (¬q '-> ¬p).
-(* := modus_ponens (interchange_hypotheses _ _ _) (impl_comp p q ⊥). *)
+Definition impl_trans {Γ} p q r : Γ |- (p '-> q) '-> (q '-> r) '-> (p '-> r) :=
+proof_trans' (Γ' := eq ((q '-> r) '-> (p '-> q) '-> (p '-> r)))
+  ltac:(intro_assumption; exact (impl_comp p q r))
+  (interchange_hypotheses_e _ _ _).
 
-(* Take ¬q to the assumptions. *)
-apply (modus_ponens (interchange_hypotheses _ _ _)), deduction_theorem.
-apply (modus_ponens (rule_2 _ _ _)), (add_under_imp p).
-proof_assumption.
-Defined.
+Definition modus_tollens {Γ} p q : Γ |- (p '-> q) '-> (¬q '-> ¬p) :=
+impl_trans p q ⊥.
 
 Definition modus_tollens_conv {Γ} p q : Γ |- (¬q '-> ¬p) '-> (p '-> q).
 apply deduction_theorem.
-apply (modus_ponens_under_imp (add_under_imp p (by_contradiction q))).
-apply (modus_ponens (interchange_hypotheses (¬q) p ⊥)).
-proof_assumption.
+red_by_dt to (eq (¬¬q)) by apply (modus_ponens (by_contradiction q)).
+apply interchange_hypotheses_e.
 Defined.
 
-Definition exfalso {Γ} p : Γ |- ⊥ '-> p :=
-(* This commented-out proof is bigger than the used one because it creates
-   an unnecesarrily large proof in place of step_1.
-   TODO consider a converse deduction theorem to shift hypotheses back
-   and forth across the |-.  `apply (modus_ponens (proof_refl p))` can
-   change the goal to an implication but doesn't remove p from the
-   hypotheses.
-   `refine (modus_ponens _ (proof_refl p)); apply (proof_mono (fun _ h => inl h))`
-   might work, but that's verbose enough to state.
-      deduction_theorem (
-      modus_ponens (by_contradiction p) (
-      add_under_imp (¬p) (ltac:(proof_assumption) : Γ;; ⊥ |- ⊥)))
-*)
-let step_1 : Γ |- ⊥ '-> ¬¬p := rule_1 ⊥ (¬p) in
-let step_2 : Γ |- ¬¬p '-> p := by_contradiction p in
-modus_ponens (modus_ponens (impl_comp _ _ _) step_2) step_1.
 
-Definition from_contradiction {Γ} p q : Γ |- ¬p '-> p '-> q :=
-modus_ponens (rule_2 p ⊥ q) (add_under_imp p (exfalso q)).
-
-Definition absurd {Γ} p q : Γ |- p '-> ¬p '-> q :=
-modus_ponens (interchange_hypotheses (¬p) p q) (from_contradiction p q).
-
-End SomeMoreLemmas.
-
-End FactsAboutProofSystem.
-
-Section Soundness.
 
 Theorem soundness_theorem (Γ : unary_predicate Proposition) p : [Γ |- p] -> Γ ⊨ p.
 intros (proof) v h.
@@ -314,7 +361,7 @@ induction proof as [p h_in|p q|p q r|p|p q h_imp h_i_imp h_p h_i_p]; [
 ].
 Qed.
 
-End Soundness.
+
 
 Section Completeness.
 
@@ -327,60 +374,70 @@ Definition provable_le p q := [Γ;; p |- q].
 
 Definition provable_le_refl : Reflexive provable_le := @proof_refl Γ.
 
-Definition provable_le_trans : Transitive provable_le :=
-fun p q r proof1 proof2 =>
-(* provable_trans' (fun q' (h : (Γ ⊔ eq q) q') => match h with
-                | inl h => ltac:(proof_assumption) : Γ;; p |- q'
-                | inr h => rew h in proof1
-                end)
-    (let (proof2) := proof2 in
-      proof_mono ((fun _ h => inr h) : Γ ⊔ eq q ⊑ (Γ ⊔ eq p) ⊔ (Γ ⊔ eq q))
-          proof2) *)
-provable_trans (fun q' (h : (Γ ⊔ eq q) q') => match h with
-                | inl h => ltac:(proof_assumption using only exact h) : Γ;; p |- q'
-                | inr h => rew h in proof1
-                end) proof2.
+Definition provable_le_trans : Transitive provable_le := fun p q r proof1 proof2 =>
+provable_trans (Γ := Γ ⊔ eq p) (Γ' := Γ ⊔ eq q)
+    ltac:(intro_assumption; [
+            proof_assumption using only assumption
+          | exact proof1 ])
+    proof2.
 
 Instance : PreOrder provable_le :=
 {| Coq.Classes.RelationClasses.PreOrder_Reflexive := provable_le_refl;
    Coq.Classes.RelationClasses.PreOrder_Transitive := provable_le_trans |}.
 
-Definition LindenbaumTarksiAlgebra := {|
+Definition LindenbaumTarksiAlgebra : BooleanAlgebra. refine {|
   preCarrier := {| le := provable_le |};
 
   or p q := (p '-> q) '-> q; and p q := ¬(p '-> ¬q);
   not p := ¬p; false := ⊥; true := ¬⊥;
 
-  false_spec p := modus_ponens (exfalso p) proof_refl;
-  true_spec p := id ⊥;
+  false_spec p := modus_ponens (exfalso p) proof_refl : [Γ;; ⊥ |- p];
+  true_spec p  := id ⊥                                : [Γ;; p |- ¬⊥];
 
   or_spec p q r := conj
     (fun h_or => ltac:(split
-        ; refine (provable_le_trans (deduction_theorem _) h_or);
-          [ eapply modus_ponens | .. ]; proof_assumption)
+        ; refine (provable_le_trans (deduction_theorem _) h_or)
+        (* TPT: (Γ;; p; p '-> q |- q) and (Γ;; q; p '-> q |- q) resp. *)
+        ; [ apply modus_ponens with (hyp := p) | ]; proof_assumption)
       : [Γ;; p |- r] /\ [Γ;; q |- r])
-    (fun '(conj (inhabits h_p) (inhabits h_q)) =>
-      _);
+    (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
+      ?[or_spec'] : Γ;; (p '-> q) '-> q |- r));
 
   and_spec p q r := conj
-    (fun h_and => conj
-      _
-      _)
+    (fun h_and => ltac:(split
+        ; refine (provable_le_trans h_and (modus_ponens (by_contradiction _) _));
+        (red_by_dt to (eq (p '-> ¬q)) by apply modus_ponens with (hyp := p '-> ¬q))
+        ; [ exact (from_contradiction p (¬q)) | exact (rule_1 (¬q) p) ])
+      : [Γ;; r |- p] /\ [Γ;; r |- q])
     (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
-      deduction_theorem (modus_ponens (hyp := q)
-        (modus_ponens proof_refl
-                      (proof_mono (fun _ h => inl h) h_p))
-        (proof_mono (fun _ h => inl h) h_q))));
+        ltac:(eapply (proof_mono (fun _ h => inl h)) in h_p, h_q; exact (
+          deduction_theorem (modus_ponens (modus_ponens proof_refl h_p) h_q)))
+        : Γ;; r |- ¬(p '-> ¬q)));
 
-  and_not' p := ltac:(apply has_proof; eapply modus_ponens; [ |
-                do 2 eapply deduction_theorem; apply modus_ponens with (hyp := p)];
-                proof_assumption);
-  or_not' p := ltac:(apply has_proof; do 2 eapply deduction_theorem;
-                     do 2 [> apply modus_ponens with (hyp := p) |..];
-                    proof_assumption)
+  and_not' p := modus_ponens proof_refl (absurd p ⊥) : [Γ;; ¬(p '-> ¬¬p) |- ⊥];
+  or_not' p := ltac:(apply deduction_theorem;
+        (red_by_dt to (eq (¬p)) by apply modus_ponens with (hyp := p));
+        exact proof_refl)                            : _ |- (p '-> ¬p) '-> ¬p;
 
-  (* and_distrib_or := _; *)
+  and_distrib_or p q r := ?[and_distrib_or]
 |}.
+
+[or_spec']: {
+  apply (modus_ponens (by_contradiction r)), deduction_theorem.
+  assert (mt_convert : forall p' (proof : Γ;; p' |- r), Γ;; (p '-> q) '-> q; ¬r |- ¬p').
+  { intros. apply proof_mono with (Γ := Γ ⊔ eq (¬r)); [
+      intro_assumption; detect_assumption |
+      apply deduction_theorem in proof; apply deduction_theorem_conv;
+      exact (modus_ponens (modus_tollens _ r) proof) ]. }
+  apply (modus_ponens (mt_convert q h_q)).
+  apply modus_ponens with (hyp := p '-> q); [ proof_assumption |
+  apply (modus_ponens (from_contradiction p q)); exact (mt_convert p h_p)].
+}
+
+[and_distrib_or]: {
+  admit.
+}
+Admitted.
 
 End BooleanAlgebra.
 
