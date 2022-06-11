@@ -23,7 +23,7 @@ Arguments le {X} : rename.
 
 Definition ge {X : Preordered} : X -> X -> Prop := flip le.
 
-#[export] Instance preorder_bundle (X : Preordered) : PreOrder X.(le) := X.(pre).
+#[export] Existing Instance pre.
 
 Notation "x ≤[ X ] y" := (le (X := X) x y) (at level 70).
 Notation "x ≤ y"      := (le x y)          (at level 70).
@@ -102,19 +102,25 @@ Local Notation "⊥"      := (_.(false)).
 Local Notation "⊤[ B ]" := (B.(true)).
 Local Notation "⊤"      := (_.(true)).
 (* I can redefine /\, \/, but I can't change their levels.  So use \./, /.\. *)
-Local Notation "x /.\[ B ] y" := (B.(and) x y) (at level 65, right associativity).
-Local Notation "x /.\ y"      := (_.(and) x y) (at level 65, right associativity).
-Local Notation "x \./[ B ] y" := (B.(or) x y)  (at level 65, right associativity).
-Local Notation "x \./ y"      := (_.(or) x y)  (at level 65, right associativity).
-Local Notation "¬ x"         := (_.(not) x)   (at level 35).
+Local Notation "x /.\[ B ] y" := (B.(and) x y)
+    (at level 65, right associativity).
+Local Notation "x /.\ y"      := (_.(and) x y)
+    (at level 65, right associativity).
+Local Notation "x \./[ B ] y" := (B.(or) x y)
+    (at level 65, right associativity).
+Local Notation "x \./ y"      := (_.(or) x y)
+    (at level 65, right associativity).
+Local Notation "¬ x" := (_.(not) x) (at level 35).
 
-Section BasicResults. Context {B : BooleanAlgebra}.
+Section BasicResults. Context {B : BooleanAlgebra}. Implicit Types p q r : B.
 
 Definition false_of_le_false p (h : p ≤ ⊥) : p ∼ ⊥ := conj h (B.(false_spec) p).
 Definition true_of_true_le p (h : ⊤ ≤ p) : p ∼ ⊤ := conj (B.(true_spec) p) h.
 
-Definition and_not_equiv_false p : p /.\ ¬p ∼ ⊥ := false_of_le_false (and_not' p).
-Definition or_not_equiv_true p : p \./ ¬p ∼ ⊤ := true_of_true_le (or_not' p).
+Definition and_not_equiv_false p : p /.\ ¬p ∼ ⊥ :=
+false_of_le_false (and_not' p).
+Definition or_not_equiv_true p : p \./ ¬p ∼ ⊤ :=
+true_of_true_le (or_not' p).
 
 Definition binop_respects_equiv_of_mono (bin_op : B -> B -> B)
         (h : Proper (le ==> le ==> le) bin_op)
@@ -131,9 +137,10 @@ proj2 (proj1 (B.(and_spec) p q (p /.\ q)) le_rfl).
 Definition le_and_of_le_both p q r : r ≤ p -> r ≤ q -> r ≤ p /.\ q :=
 fun h1 h2 => proj2 (B.(and_spec) p q r) (conj h1 h2).
 
-Definition and_mono : Proper (le ++> le ++> le) B.(and) := fun x1 x2 h_x y1 y2 h_y =>
-le_and_of_le_both (le_trans (and_le_left x1 y1) h_x)
-                  (le_trans (and_le_right x1 y1) h_y).
+Definition and_mono : Proper (le ++> le ++> le) B.(and) :=
+fun x1 x2 h_x y1 y2 h_y => le_and_of_le_both
+  (le_trans (and_le_left x1 y1) h_x)
+  (le_trans (and_le_right x1 y1) h_y).
 
 Instance and_respects_equiv : Proper (equiv ==> equiv ==> equiv) B.(and) :=
 binop_respects_equiv_of_mono and_mono.
@@ -168,9 +175,10 @@ proj2 (proj1 (B.(or_spec) p q (p \./ q)) le_rfl).
 Definition or_le_of_both_le p q r : p ≤ r -> q ≤ r -> p \./ q ≤ r :=
 fun h1 h2 => proj2 (B.(or_spec) p q r) (conj h1 h2).
 
-Definition or_mono : Proper (le ++> le ++> le) B.(or) := fun x1 x2 h_x y1 y2 h_y =>
-or_le_of_both_le (le_trans h_x (left_le_or x2 y2))
-                 (le_trans h_y (right_le_or x2 y2)).
+Definition or_mono : Proper (le ++> le ++> le) B.(or) :=
+fun x1 x2 h_x y1 y2 h_y => or_le_of_both_le
+  (le_trans h_x (left_le_or x2 y2))
+  (le_trans h_y (right_le_or x2 y2)).
 
 Instance or_respects_equiv : Proper (equiv ==> equiv ==> equiv) B.(or) :=
 binop_respects_equiv_of_mono or_mono.
@@ -196,12 +204,13 @@ Definition or_assoc p q r : (p \./ q) \./ r ∼ p \./ (q \./ r) := conj
 
 End or.
 
-Definition or_distrib_and p q r : p \./[B] (q /.\ r) ∼ (p \./ q) /.\ (p \./ r).
+Definition or_distrib_and p q r : p \./ (q /.\ r) ∼ (p \./ q) /.\ (p \./ r).
 Admitted.
 
 (* Can't get setoid rewriting/etc. to work *)
-Definition le_of_and_false_of_or_true p q r (h1 : p /.\ q ∼ ⊥) (h2 : p \./ r ∼ ⊤)
-    : q ≤[ B ] r.
+Definition le_of_and_false_of_or_true p q r
+    : p /.\ q ∼ ⊥ -> p \./ r ∼ ⊤ -> q ≤ r.
+intros h1 h2.
 apply (and_respects_equiv (equiv_refl q)) in h2.
 apply (equiv_trans (equiv_sym (and_distrib_or q p r))) in h2.
 apply (fun h => equiv_trans h (and_true q)) in h2.
@@ -254,7 +263,8 @@ Definition filter_adjoin (f : filter) [p] (h : ¬p ∉ f) : filter := {|
        le_and_of_le_both (le_trans h1 h_le1) (le_trans h2 h_le2))
 |}.
 
-Definition filter_sub_adjoin (f : filter) p (h : ¬p ∉ f) : f ⊆ filter_adjoin h := fun q h' =>
+Definition filter_sub_adjoin (f : filter) p (h : ¬p ∉ f)
+    : f ⊆ filter_adjoin h := fun q h' =>
 ex_intro2 (Q := fun r => p /.\ r ≤ q) q h' (and_le_right p q).
 
 Definition in_filter_adjoin (f : filter) p (h : ¬p ∉ f) : p ∈ filter_adjoin h :=
