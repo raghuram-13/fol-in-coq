@@ -4,7 +4,7 @@ Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
 Require Lattices.
 
 (* Miscellany *)
-Ltac done := let n := numgoals in guard n = 0.
+Ltac done := guard numgoals = 0.
 
 (* Limit scope of Variable declarations. They seem to be treated as some kind of
    axioms otherwise, whereas the intention is to parametrise future functions
