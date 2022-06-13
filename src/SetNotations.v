@@ -8,7 +8,7 @@ Notation "x ∈ S" := ((S : unary_predicate _) x) (at level 70).
 Notation "x ∉ S" := (~(S : unary_predicate _) x) (at level 70).
 
 Declare Scope subset_scope. Bind Scope subset_scope with unary_predicate.
-Delimit Scope subset_scope with subset_scope.
+Delimit Scope subset_scope with subset.
 
 (*
 Local Notation "{ x : U ∣ P }" := (fun x : U => P)
