@@ -9,11 +9,6 @@ Require Coq.Classes.Morphisms. Import (notations) Coq.Classes.Morphisms.
 Import Coq.Classes.Morphisms (Proper).
 From Coq Require Setoid.
 
-(* Why is this missing? *)
-(* It caused an endless loop when searching for an instance of `Reflexive`
-   at least once. *)
-(* #[local] Existing Instance Build_Equivalence. *)
-
 Structure Preordered :=
 { carrier :> Type; le : carrier -> carrier -> Prop; pre : PreOrder le }.
 
@@ -33,7 +28,7 @@ Notation "x ≥ y"      := (ge x y)          (at level 70).
 Section PreorderedProperties. Context {X : Preordered}.
 
 Definition le_refl : Reflexive X.(le) := reflexivity.
-Definition le_rfl {x : X} : x ≤ x := le_refl x.
+#[global] Arguments le_refl {x}, x.
 
 Definition le_trans : Transitive X.(le) := transitivity.
 
@@ -46,8 +41,8 @@ Definition equiv_ge     : x ≥ y := proj2 h.
 Definition equiv_ge_rev : y ≥ x := proj1 h.
 End ProjectedIneqs.
 
-Definition equiv_refl : Reflexive equiv := fun _ => conj le_rfl le_rfl.
-Definition equiv_rfl {x : X} : equiv x x := equiv_refl x.
+Definition equiv_refl : Reflexive equiv := fun _ => conj le_refl le_refl.
+#[global] Arguments equiv_refl {x}, x.
 
 Definition equiv_sym : Symmetric equiv :=
 fun _ _ h => conj (equiv_le_rev h) (equiv_le h).
@@ -57,12 +52,18 @@ conj (le_trans (equiv_le h1) (equiv_le h2))
      (le_trans (equiv_le_rev h2) (equiv_le_rev h1)).
 
 Instance equiv_equivalence : Equivalence equiv :=
-Build_Equivalence equiv equiv_refl equiv_sym equiv_trans.
+Build_Equivalence equiv (@equiv_refl) equiv_sym equiv_trans.
 
 Instance le_respects_equiv : Proper (equiv ==> equiv ==> iff) X.(le) :=
 fun _ _ h_x _ _ h_y => conj
 (fun h_le_1 => le_trans (le_trans (equiv_ge h_x) h_le_1) (equiv_le h_y))
 (fun h_le_2 => le_trans (le_trans (equiv_le h_x) h_le_2) (equiv_ge h_y)).
+
+Definition binop_respects_equiv_of_mono (bin_op : X -> X -> X)
+        (h : Proper (le ==> le ==> le) bin_op)
+    : Proper (equiv ==> equiv ==> equiv) bin_op :=
+fun _ _ h_x _ _ h_y => conj (h _ _ (equiv_le h_x)     _ _ (equiv_le h_y))
+                            (h _ _ (equiv_le_rev h_x) _ _ (equiv_le_rev h_y)).
 
 End PreorderedProperties.
 
@@ -81,234 +82,287 @@ Section SpecialElements.
 
 End SpecialElements.
 
-Structure BooleanAlgebra := {
-  preCarrier :> Preordered;
+#[projections(primitive)] Class isBooleanAlgebra (B : Preordered) := {
+  BooleanAlgebra_PreOrder :> PreOrder B.(le) := B.(pre);
 
-  and : preCarrier -> preCarrier -> preCarrier;
-  or : preCarrier -> preCarrier -> preCarrier;
-  true : preCarrier; false : preCarrier;
-  not : preCarrier -> preCarrier;
+  meet : B -> B -> B;
+  join : B -> B -> B;
+  top : B; bot : B;
+  complement : B -> B;
 
-  and_spec p q r : le r (and p q) <-> le r p /\ le r q;
-  or_spec p q r : le (or p q) r <-> le p r /\ le q r;
-  and_distrib_or p q r : equiv (and p (or q r)) (or (and p q) (and p r));
-  false_spec p : le false p; true_spec p : le p true;
-  and_not' p : and p (not p) ≤ false;
-  or_not' p : true ≤ or p (not p)
+  meet_le_left p q : meet p q ≤ p; meet_le_right p q : meet p q ≤ q;
+  le_meet_of_le_both {p q r} : r ≤ p -> r ≤ q -> r ≤ meet p q;
+
+  meet_spec p q r : r ≤ meet p q <-> r ≤ p /\ r ≤ q := ltac:(split; [
+      intro h_meet; split; apply (le_trans h_meet)
+      ; [ apply meet_le_left | apply meet_le_right ]
+    | intros [h1 h2]; exact (le_meet_of_le_both p q r h1 h2) ]);
+
+  left_le_join p q : p ≤ join p q; right_le_join p q : q ≤ join p q;
+  join_le_of_both_le {p q r} : p ≤ r -> q ≤ r -> join p q ≤ r;
+
+  join_spec p q r : join p q ≤ r <-> p ≤ r /\ q ≤ r := ltac:(split; [
+      intro h_join; split; refine (le_trans _ h_join)
+      ; [ apply left_le_join | apply right_le_join ]
+    | intros [h1 h2]; exact (join_le_of_both_le p q r h1 h2) ]);
+
+  bot_le p : bot ≤ p; le_top p : p ≤ top;
+
+  equiv_bot_of_le_bot {p} : p ≤ bot -> p ∼ bot := fun h => conj h (bot_le p);
+  equiv_top_of_top_le {p} : top ≤ p -> p ∼ top := fun h => conj (le_top p) h;
+
+  meet_compl_le_bot p : meet p (complement p) ≤ bot;
+  top_le_join_compl p : top ≤ join p (complement p);
+
+  meet_compl_equiv_bot p : meet p (complement p) ∼ bot :=
+    equiv_bot_of_le_bot (meet_compl_le_bot p);
+  join_compl_equiv_top p : join p (complement p) ∼ top :=
+    equiv_top_of_top_le (top_le_join_compl p);
+
+  meet_distrib_join' p q r : meet p (join q r) ≤ join (meet p q) (meet p r);
+  meet_distrib_join p q r  : meet p (join q r) ∼ join (meet p q) (meet p r) :=
+  conj (meet_distrib_join' p q r)
+       ltac:(apply le_meet_of_le_both; [
+           apply join_le_of_both_le; apply meet_le_left
+         | apply join_le_of_both_le; apply (le_trans (meet_le_right p _))
+           ;[apply left_le_join | apply right_le_join] ]);
+
+  (* join_distrib_meet' p q r : join p (meet q r) ≥ meet (join p q) (join p r) :=
+    _;
+  join_distrib_meet p q r : join p (meet q r) ∼ meet (join p q) (join p r) :=
+  conj ltac:(apply join_le_of_both_le; [
+           apply le_meet_of_le_both; apply left_le_join
+         | apply le_meet_of_le_both; refine (le_trans _ (right_le_join p _))
+           ;[apply meet_le_left | apply meet_le_right] ])
+       (join_distrib_meet' p q r) *)
 }.
 
-Local Notation "⊥[ B ]" := (B.(false)).
-Local Notation "⊥"      := (_.(false)).
-Local Notation "⊤[ B ]" := (B.(true)).
-Local Notation "⊤"      := (_.(true)).
-(* I can redefine /\, \/, but I can't change their levels.  So use \./, /.\. *)
-Local Notation "x /.\[ B ] y" := (B.(and) x y)
-    (at level 65, right associativity).
-Local Notation "x /.\ y"      := (_.(and) x y)
-    (at level 65, right associativity).
-Local Notation "x \./[ B ] y" := (B.(or) x y)
-    (at level 65, right associativity).
-Local Notation "x \./ y"      := (_.(or) x y)
-    (at level 65, right associativity).
-Local Notation "¬ x" := (_.(not) x) (at level 35).
+(* Arguments meet_le_left {_ _} p q, {_ _ p q}.
+Arguments meet_le_right {_ _} p q, {_ _ p q}.
+Arguments left_le_join {_ _} p q, {_ _ p q}.
+Arguments right_le_join {_ _} p q, {_ _ p q}.
+Arguments bot_le {_ _} p, {_ _ p}.
+Arguments le_top {_ _} p, {_ _ p}.
+Arguments meet_compl_le_bot {_ _} p, {_ _ p}.
+Arguments top_le_join_compl {_ _} p, {_ _ p}. *)
+Arguments meet_compl_equiv_bot {_ _} p, {_ _ p}.
+Arguments join_compl_equiv_top {_ _} p, {_ _ p}.
+(* Argument meet_distrib_join' {_ _} p q r, {_ _ p q r}. *)
+Arguments meet_distrib_join {_ _} p q r, {_ _ p q r}.
+(* (* Arguments join_distrib_meet' {_ _} p q r, {_ _ p q r}. *)
+Arguments join_distrib_meet {_ _} p q r, {_ _ p q r}. *)
 
-Section BasicResults. Context {B : BooleanAlgebra}. Implicit Types p q r : B.
+Structure BooleanAlgebra := {
+  preCarrier :> Preordered;
+  _is_boolean_algebra : isBooleanAlgebra preCarrier
+}.
+#[export] Existing Instance _is_boolean_algebra.
 
-Definition false_of_le_false p (h : p ≤ ⊥) : p ∼ ⊥ := conj h (B.(false_spec) p).
-Definition true_of_true_le p (h : ⊤ ≤ p) : p ∼ ⊤ := conj (B.(true_spec) p) h.
+Notation "⊥[ B ]" := (bot : B).
+Notation "⊥"      := (bot).
+Notation "⊤[ B ]" := (top : B).
+Notation "⊤"      := (top).
+Notation "x ∧[ B ] y" := (meet (x:B) (y:B)) (at level 65, right associativity).
+Notation "x ∧ y"      := (meet x y)         (at level 65, right associativity).
+Notation "x ∨[ B ] y" := (join (x:B) (y:B)) (at level 65, right associativity).
+Notation "x ∨ y"      := (join x y)         (at level 65, right associativity).
+Notation "¬ x" := (complement x) (at level 35).
 
-Definition and_not_equiv_false p : p /.\ ¬p ∼ ⊥ :=
-false_of_le_false (and_not' p).
-Definition or_not_equiv_true p : p \./ ¬p ∼ ⊤ :=
-true_of_true_le (or_not' p).
+Section Stuff. Context {B : BooleanAlgebra}. Implicit Types p q r : B.
 
-Definition binop_respects_equiv_of_mono (bin_op : B -> B -> B)
-        (h : Proper (le ==> le ==> le) bin_op)
-    : Proper (equiv ==> equiv ==> equiv) bin_op :=
-fun _ _ h_x _ _ h_y => conj (h _ _ (equiv_le h_x)     _ _ (equiv_le h_y))
-                            (h _ _ (equiv_le_rev h_x) _ _ (equiv_le_rev h_y)).
+Section BasicResults.
 
-Section and.
+Section meet.
 
-Definition and_le_left p q : p /.\ q ≤ p :=
-proj1 (proj1 (B.(and_spec) p q (p /.\ q)) le_rfl).
-Definition and_le_right p q : p /.\ q ≤ q :=
-proj2 (proj1 (B.(and_spec) p q (p /.\ q)) le_rfl).
-Definition le_and_of_le_both p q r : r ≤ p -> r ≤ q -> r ≤ p /.\ q :=
-fun h1 h2 => proj2 (B.(and_spec) p q r) (conj h1 h2).
+Definition meet_mono : Proper (le ++> le ++> le) (meet : B -> B -> B) :=
+fun x1 x2 h_x y1 y2 h_y => le_meet_of_le_both
+  (le_trans (meet_le_left x1 y1) h_x)
+  (le_trans (meet_le_right x1 y1) h_y).
 
-Definition and_mono : Proper (le ++> le ++> le) B.(and) :=
-fun x1 x2 h_x y1 y2 h_y => le_and_of_le_both
-  (le_trans (and_le_left x1 y1) h_x)
-  (le_trans (and_le_right x1 y1) h_y).
+Instance meet_respects_equiv : Proper (equiv ==> equiv ==> equiv) meet :=
+binop_respects_equiv_of_mono meet_mono.
 
-Instance and_respects_equiv : Proper (equiv ==> equiv ==> equiv) B.(and) :=
-binop_respects_equiv_of_mono and_mono.
+Definition meet_top p : p ∧ ⊤ ∼ p :=
+conj (meet_le_left p ⊤) (le_meet_of_le_both (le_refl p) (le_top p)).
 
-Definition and_true p : p /.\ ⊤ ∼ p :=
-conj (and_le_left p ⊤) (le_and_of_le_both (le_refl p) (B.(true_spec) p)).
+Definition meet_bot p : p ∧ ⊥ ∼ ⊥ :=
+conj (meet_le_right p ⊥) (bot_le _).
 
-Definition and_false p : p /.\ ⊥ ∼ ⊥ :=
-conj (and_le_right p ⊥) (B.(false_spec) _).
+Definition meet_comm p q : p ∧ q ∼ q ∧ p := conj
+(le_meet_of_le_both (meet_le_right p q) (meet_le_left p q))
+(le_meet_of_le_both (meet_le_right q p) (meet_le_left q p)).
 
-Definition and_comm p q : p /.\ q ∼ q /.\ p := conj
-(le_and_of_le_both (and_le_right p q) (and_le_left p q))
-(le_and_of_le_both (and_le_right q p) (and_le_left q p)).
+Definition meet_assoc p q r : (p ∧ q) ∧ r ∼ p ∧ (q ∧ r) := conj
+(le_meet_of_le_both   (le_trans (meet_le_left _ r) (meet_le_left p q)  : _ ≤ p)
+  (le_meet_of_le_both (le_trans (meet_le_left _ r) (meet_le_right p q) : _ ≤ q)
+                     (meet_le_right _ r                              : _ ≤ r)))
+(le_meet_of_le_both (le_meet_of_le_both
+  (meet_le_left p _                                : _ ≤ p)
+  (le_trans (meet_le_right p _) (meet_le_left q r)  : _ ≤ q))
+  (le_trans (meet_le_right p _) (meet_le_right q r) : _ ≤ r)).
 
-Definition and_assoc p q r : (p /.\ q) /.\ r ∼ p /.\ (q /.\ r) := conj
-(le_and_of_le_both   (le_trans (and_le_left _ r) (and_le_left p q)  : _ ≤ p)
-  (le_and_of_le_both (le_trans (and_le_left _ r) (and_le_right p q) : _ ≤ q)
-                     (and_le_right _ r                              : _ ≤ r)))
-(le_and_of_le_both (le_and_of_le_both
-  (and_le_left p _                                : _ ≤ p)
-  (le_trans (and_le_right p _) (and_le_left q r)  : _ ≤ q))
-  (le_trans (and_le_right p _) (and_le_right q r) : _ ≤ r)).
+End meet.
 
-End and.
+Section join.
 
-Section or.
+Definition join_mono : Proper (le ++> le ++> le) (join : B -> B -> B) :=
+fun x1 x2 h_x y1 y2 h_y => join_le_of_both_le
+  (le_trans h_x (left_le_join x2 y2))
+  (le_trans h_y (right_le_join x2 y2)).
 
-Definition left_le_or p q : p ≤ p \./ q :=
-proj1 (proj1 (B.(or_spec) p q (p \./ q)) le_rfl).
-Definition right_le_or p q : q ≤ p \./ q :=
-proj2 (proj1 (B.(or_spec) p q (p \./ q)) le_rfl).
-Definition or_le_of_both_le p q r : p ≤ r -> q ≤ r -> p \./ q ≤ r :=
-fun h1 h2 => proj2 (B.(or_spec) p q r) (conj h1 h2).
+Instance join_respects_equiv : Proper (equiv ==> equiv ==> equiv) join :=
+binop_respects_equiv_of_mono join_mono.
 
-Definition or_mono : Proper (le ++> le ++> le) B.(or) :=
-fun x1 x2 h_x y1 y2 h_y => or_le_of_both_le
-  (le_trans h_x (left_le_or x2 y2))
-  (le_trans h_y (right_le_or x2 y2)).
+Definition join_bot p : p ∨ ⊥ ∼ p :=
+conj (join_le_of_both_le (le_refl p) (bot_le p)) (left_le_join p ⊥).
 
-Instance or_respects_equiv : Proper (equiv ==> equiv ==> equiv) B.(or) :=
-binop_respects_equiv_of_mono or_mono.
+Definition join_top p : p ∨ ⊤ ∼ ⊤ :=
+conj (le_top _) (right_le_join p ⊤).
 
-Definition or_false p : p \./ ⊥ ∼ p :=
-conj (or_le_of_both_le (le_refl p) (B.(false_spec) p)) (left_le_or p ⊥).
+Definition join_comm p q : p ∨ q ∼ q ∨ p := conj
+(join_le_of_both_le (right_le_join q p) (left_le_join q p))
+(join_le_of_both_le (right_le_join p q) (left_le_join p q)).
 
-Definition or_true p : p \./ ⊤ ∼ ⊤ :=
-conj (B.(true_spec) _) (right_le_or p ⊤).
+Definition join_assoc p q r : (p ∨ q) ∨ r ∼ p ∨ (q ∨ r) := conj
+(join_le_of_both_le (join_le_of_both_le
+  (left_le_join p _                               : p ≤ _)
+  (le_trans (left_le_join q r) (right_le_join p _)  : q ≤ _))
+  (le_trans (right_le_join q r) (right_le_join p _) : r ≤ _))
+(join_le_of_both_le   (le_trans (left_le_join p q) (left_le_join _ r)  : p ≤ _)
+  (join_le_of_both_le (le_trans (right_le_join p q) (left_le_join _ r) : q ≤ _)
+                     (right_le_join _ r                            : r ≤ _))).
 
-Definition or_comm p q : p \./ q ∼ q \./ p := conj
-(or_le_of_both_le (right_le_or q p) (left_le_or q p))
-(or_le_of_both_le (right_le_or p q) (left_le_or p q)).
+End join.
 
-Definition or_assoc p q r : (p \./ q) \./ r ∼ p \./ (q \./ r) := conj
-(or_le_of_both_le (or_le_of_both_le
-  (left_le_or p _                               : p ≤ _)
-  (le_trans (left_le_or q r) (right_le_or p _)  : q ≤ _))
-  (le_trans (right_le_or q r) (right_le_or p _) : r ≤ _))
-(or_le_of_both_le   (le_trans (left_le_or p q) (left_le_or _ r)  : p ≤ _)
-  (or_le_of_both_le (le_trans (right_le_or p q) (left_le_or _ r) : q ≤ _)
-                     (right_le_or _ r                            : r ≤ _))).
-
-End or.
-
-Definition or_distrib_and p q r : p \./ (q /.\ r) ∼ (p \./ q) /.\ (p \./ r).
+Definition join_distrib_meet' p q r : p ∨ (q ∧ r) ≥ (p ∨ q) ∧ (p ∨ r).
 Admitted.
 
 (* Can't get setoid rewriting/etc. to work *)
-Definition le_of_and_false_of_or_true p q r
-    : p /.\ q ∼ ⊥ -> p \./ r ∼ ⊤ -> q ≤ r.
+Definition le_of_meet_bot_of_join_top p q r
+    : p ∧ q ∼ ⊥ -> p ∨ r ∼ ⊤ -> q ≤ r.
 intros h1 h2.
-apply (and_respects_equiv (equiv_refl q)) in h2.
-apply (equiv_trans (equiv_sym (and_distrib_or q p r))) in h2.
-apply (fun h => equiv_trans h (and_true q)) in h2.
-apply (equiv_trans (equiv_sym (or_respects_equiv (equiv_trans (and_comm q p) h1) (equiv_refl (q /.\ r))))) in h2.
-apply (equiv_trans (equiv_sym (equiv_trans (or_comm ⊥ _) (or_false _)))) in h2.
-apply (le_respects_equiv h2 equiv_rfl).
-exact (and_le_right q r).
+apply (meet_respects_equiv (equiv_refl q)) in h2.
+apply (equiv_trans (equiv_sym (meet_distrib_join q p r))) in h2.
+apply (fun h => equiv_trans h (meet_top q)) in h2.
+apply (equiv_trans (equiv_sym (join_respects_equiv (equiv_trans (meet_comm q p) h1) (equiv_refl (q ∧ r))))) in h2.
+apply (equiv_trans (equiv_sym (equiv_trans (join_comm ⊥ _) (join_bot _)))) in h2.
+apply (le_respects_equiv h2 equiv_refl).
+exact (meet_le_right q r).
 Defined.
 
-Definition le_not_of_and_false p q (h : p /.\ q ∼ ⊥) : q ≤ ¬p :=
-le_of_and_false_of_or_true h (or_not_equiv_true p).
+Definition le_compl_of_meet_bot p q (h : p ∧ q ∼ ⊥) : q ≤ ¬p :=
+le_of_meet_bot_of_join_top h (join_compl_equiv_top p).
 
-Definition not_le_of_or_true p q (h : p \./ q ∼ ⊤) : ¬p ≤ q :=
-le_of_and_false_of_or_true (and_not_equiv_false p) (h).
+Definition compl_le_of_join_top p q (h : p ∨ q ∼ ⊤) : ¬p ≤ q :=
+le_of_meet_bot_of_join_top (meet_compl_equiv_bot p) h.
 
 End BasicResults.
 
 Section Filters.
-Context (B : BooleanAlgebra).
 
-Structure filter := {
+Structure Filter := {
   filterSet :> unary_predicate B;
 
-  filter_true_spec : ⊤ ∈ filterSet;
-  filter_false_spec : ⊥ ∉ filterSet;
+  filter_top_spec : ⊤ ∈ filterSet;
   filter_mono p q : p ≤ q -> p ∈ filterSet -> q ∈ filterSet;
-  filter_and_spec p q : p ∈ filterSet -> q ∈ filterSet -> p /.\ q ∈ filterSet;
+  filter_meet_spec p q : p ∈ filterSet -> q ∈ filterSet -> p ∧ q ∈ filterSet;
 }.
 
-#[local] Arguments ex_intro2 [A P Q].
-Definition filter_adjoin (f : filter) [p] (h : ¬p ∉ f) : filter := {|
-  filterSet := fun q => exists2 r, r ∈ f & p /.\ r ≤ q;
+Definition filter_proper (F : Filter) : Prop := ⊥ ∉ F.
 
-  (* No idea why it guesses Q wrong when the expected type LITERALLY
-     specifies it. *)
-  filter_true_spec := ex_intro2 (Q := fun r => p /.\ r ≤ ⊤)
-                        ⊤ f.(filter_true_spec) (B.(true_spec) _);
-  filter_false_spec h' := let (r, h_in, h_le) := h' in
-    h (f.(filter_mono) (le_not_of_and_false (false_of_le_false h_le)) h_in);
+Structure ProperFilter := {
+  _ProperFilter_as_Filter :> Filter;
+  ProperFilter_spec : filter_proper _ProperFilter_as_Filter
+}.
 
-  filter_mono q q' h_le h' := let (r, h_in, h_le') := h' in
+Section AdjoinElement.
+Variables (F : Filter) (p : B).
+
+Arguments ex_intro2 [_ _ _].
+
+Definition filter_adjoin : Filter := {|
+  filterSet := fun q => exists2 r : B, r ∈ F & p ∧ r ≤ q;
+
+  (* No idea why Q isn't inferred correctly just because ⊤ occurs twice
+     when it should be LITERALLY available from the expected type. *)
+  filter_top_spec := ex_intro2 (Q := fun r => p ∧ r ≤ ⊤)
+                               ⊤ F.(filter_top_spec) (le_top (p ∧ ⊤));
+  filter_mono q q' h_le '(ex_intro2 r h_in h_le') :=
     ex_intro2 r h_in (le_trans h_le' h_le);
-
-  filter_and_spec q1 q2 h1 h2 :=
-    let (r1, h_in1, h_le1) := h1 in let (r2, h_in2, h_le2) := h2 in
-    ex_intro2 (r1 /.\ r2) (f.(filter_and_spec) h_in1 h_in2)
-      (let r := p /.\ (r1 /.\ r2) in
-       let h1 : r ≤ p /.\ r1 := and_mono le_rfl (and_le_left r1 r2) in
-       let h2 : r ≤ p /.\ r2 := and_mono le_rfl (and_le_right r1 r2) in
-       le_and_of_le_both (le_trans h1 h_le1) (le_trans h2 h_le2))
+  filter_meet_spec q1 q2
+      '(ex_intro2 r1 h_in1 h_le1) '(ex_intro2 r2 h_in2 h_le2) :=
+    ex_intro2 (r1 ∧ r2) (F.(filter_meet_spec) h_in1 h_in2)
+      (let r := p ∧ (r1 ∧ r2) in
+       let h1 : r ≤ p ∧ r1 := meet_mono le_refl (meet_le_left r1 r2) in
+       let h2 : r ≤ p ∧ r2 := meet_mono le_refl (meet_le_right r1 r2) in
+       le_meet_of_le_both (le_trans h1 h_le1) (le_trans h2 h_le2))
 |}.
 
-Definition filter_sub_adjoin (f : filter) p (h : ¬p ∉ f)
-    : f ⊆ filter_adjoin h := fun q h' =>
-ex_intro2 (Q := fun r => p /.\ r ≤ q) q h' (and_le_right p q).
+Section Inclusions.
+Definition filter_sub_adjoin : F ⊆ filter_adjoin := fun q h =>
+ex_intro2 (Q := fun r => p ∧ r ≤ q) q h (meet_le_right p q).
 
-Definition in_filter_adjoin (f : filter) p (h : ¬p ∉ f) : p ∈ filter_adjoin h :=
-ex_intro2 ⊤ f.(filter_true_spec) (and_le_left p ⊤).
+Definition adjoined_in_filter_adjoin : p ∈ filter_adjoin :=
+(ex_intro2 ⊤ F.(filter_top_spec) (meet_le_left p ⊤)).
+End Inclusions.
 
-Section Ultrafilters.
-Context (f : filter).
+Definition filter_adjoin_proper (h : filter_proper F) (h' : ¬p ∉ F)
+    : filter_proper filter_adjoin := fun '(ex_intro2 r h_in h_le) =>
+h' (F.(filter_mono) (le_compl_of_meet_bot (equiv_bot_of_le_bot h_le)) h_in).
 
-Definition filter_maximal := forall f' : filter, f ⊆ f' -> f' ⊆ f.
+End AdjoinElement.
+Arguments filter_sub_adjoin F p : clear implicits.
+
+Section Ultrafilters. Variable (F : Filter).
+
+Definition filter_maximal_proper :=
+filter_proper F /\ forall F', filter_proper F' -> F ⊆ F' -> F' ⊆ F.
 
 (* We use here lem in the form `forall p, p ∈ f \/ ¬p ∈ f`. *)
-Theorem filter_maximal_iff_mem_or_not_mem {h_em : forall p, p ∈ f \/ p ∉ f}
-    : filter_maximal <-> forall p, p ∈ f \/ ¬p ∈ f.
+Theorem filter_maximal_iff_mem_or_compl_mem (h_em : forall p, p ∈ F \/ p ∉ F)
+    : filter_maximal_proper <-> filter_proper F /\ forall p, p ∈ F \/ ¬p ∈ F.
+(* Turns out (¬p ∈ F \/ p ∈ F) comes up naturally in the proof.
+   `setoid_rewrite` is apparently needed to rewrite under the `forall`. *)
+setoid_rewrite or_comm.
+(* Making use of `h_em`. *)
+assert (em__or_iff : forall p B, (p ∈ F \/ B) <-> (p ∉ F -> B)).
+{ split. + intros [h_p | h_B] h_np; [ contradiction (h_np h_p) | exact h_B ].
+         + intro h; destruct (h_em p); [ left | right; apply h ]; assumption. }
+(* Since `filter_proper F` is common on both sides, we can assume it's there
+   and prove the other halves are equivalent. *)
+assert (iff_under : forall (a b c : Prop) (h : a -> (b <-> c)),
+                      a /\ b <-> a /\ c).
+{ split; (intros [h_a ?]; split; [ | apply (h h_a) ]; assumption). }
+apply iff_under; intro h_proper.
 split.
-- intros h_max p.
-  destruct (h_em (¬p)) as [h_n_in|h_n_notin].
-  + exact (or_intror h_n_in).
-  + apply or_introl.
-    apply (h_max (filter_adjoin h_n_notin) (filter_sub_adjoin h_n_notin)).
-    exact (in_filter_adjoin h_n_notin).
-  (* destruct (h_em p) as [|h_notin], (h_em (¬p)) as [|h_nnotin]
-  ; try ((apply or_introl + apply or_intror); assumption).
-  (* remaining case: p ∉ f and ¬p ∉ f *)
-  exfalso.
-  exact (h_notin (h_max _ (filter_sub_adjoin h_nnotin)
-                          p (in_filter_adjoin h_nnotin))). *)
-- intros h f' h_incl p h_in_f'.
-  assert (h_n_notin' : ¬p ∉ f').
-  { intro. apply f'.(filter_false_spec).
-    apply (f'.(filter_mono) (equiv_le (and_not_equiv_false p))).
-    apply (f'.(filter_and_spec) h_in_f').
-    assumption. }
-  destruct (h p) as [h_p|h_np]. + exact h_p.
-  + contradiction (h_n_notin' (h_incl _ h_np)).
+- intros h_max p. apply em__or_iff; intro h_c_notin.
+  apply (h_max (filter_adjoin F p) (filter_adjoin_proper h_proper h_c_notin)
+               (filter_sub_adjoin F p)).
+  exact (adjoined_in_filter_adjoin F p).
+- intros h F' h_proper' h_incl p h_in'.
+  apply em__or_iff with (p := ¬p); [ apply h | ].
+  intro h'.
+  apply h_incl, (F'.(filter_meet_spec) h_in') in h'.
+  pose (h_bot_in' := F'.(filter_mono) (meet_compl_le_bot p) h').
+  contradiction (h_proper' h_bot_in').
 Qed.
 
 End Ultrafilters.
-
-Definition Ultrafilter := {f : filter | filter_maximal f}.
+Structure Ultrafilter := {
+  _Ultrafilter_as_Filter : Filter;
+  Ultrafilter_spec : filter_maximal_proper _Ultrafilter_as_Filter
+}.
+Coercion _Ultrafilter_as_ProperFilter (F : Ultrafilter) : ProperFilter :=
+Build_ProperFilter (proj1 (Ultrafilter_spec F)).
 
 End Filters.
 
+End Stuff.
+Arguments Filter B : clear implicits.
+Arguments ProperFilter B : clear implicits.
+Arguments Ultrafilter B : clear implicits.
 
-Definition BPIT (B : BooleanAlgebra) :=
-forall f : filter B, exists2 f' : filter B, filter_maximal f' & f ⊆ f'.
+Definition BPIT (B : BooleanAlgebra) : Prop :=
+forall F : ProperFilter B, exists F' : Ultrafilter B, F ⊆ F'.
 
 Axiom boolean_prime_ideal_theorem : forall B : BooleanAlgebra, BPIT B.
