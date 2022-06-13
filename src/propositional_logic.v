@@ -396,8 +396,8 @@ Qed.
 Section Completeness.
 
 Section BooleanAlgebra.
-Import Lattices.
 Import Coq.Classes.RelationClasses (Reflexive, Transitive, PreOrder).
+Import -(notations) Lattices.
 Context {Γ : Proposition -> Type}.
 
 Definition provable_le p q := [Γ;; p |- q].
