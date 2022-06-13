@@ -483,10 +483,10 @@ apply disj_univ
   | solve [apply left_proves_disj | apply right_proves_disj] ]).
 Defined.
 
-Section LindenbaumTarksiAlgebra.
+Section LindenbaumTarskiAlgebra.
 Import -(notations) Lattices.BooleanAlgebra. Import Lattices (le).
 
-Definition LindenbaumTarksiAlgebra {Γ} : BooleanAlgebra :=
+Definition LindenbaumTarskiAlgebra {Γ} : BooleanAlgebra :=
 @Build_BooleanAlgebra {| le := provable_le (Γ := Γ) |}
 {|
   join := disj; meet := conj; complement p := ¬p; bot := ⊥; top := ¬⊥;
@@ -507,7 +507,7 @@ Definition LindenbaumTarksiAlgebra {Γ} : BooleanAlgebra :=
 
   meet_distrib_join' p q r := and_distrib_or' p q r
 |}.
-End LindenbaumTarksiAlgebra.
+End LindenbaumTarskiAlgebra.
 
 End Completeness.
 
