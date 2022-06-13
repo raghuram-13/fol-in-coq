@@ -168,15 +168,13 @@ Structure BooleanAlgebra := {
 }.
 #[export] Existing Instance _is_boolean_algebra.
 
-Notation "⊥[ B ]" := (bot : B).
-Notation "⊥"      := (bot).
-Notation "⊤[ B ]" := (top : B).
-Notation "⊤"      := (top).
+Notation "⊥[ B ]" := (bot : B). Notation "⊤[ B ]" := (top : B).
 Notation "x ∧[ B ] y" := (meet (x:B) (y:B)) (at level 65, right associativity).
-Notation "x ∧ y"      := (meet x y)         (at level 65, right associativity).
 Notation "x ∨[ B ] y" := (join (x:B) (y:B)) (at level 65, right associativity).
-Notation "x ∨ y"      := (join x y)         (at level 65, right associativity).
-Notation "¬ x" := (complement x) (at level 35).
+Notation "⊥"   := (bot). Notation "⊤"   := (top).
+Infix    "∧"   := meet           (at level 65, right associativity).
+Infix    "∨"   := join           (at level 65, right associativity).
+Notation "¬ x" := (complement x) (at level 35, right associativity).
 
 Section Stuff. Context {B : BooleanAlgebra}. Implicit Types p q r : B.
 

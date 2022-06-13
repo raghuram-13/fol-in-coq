@@ -25,9 +25,8 @@ Inductive Proposition :=
 Definition neg (p : Proposition)    : Proposition := imp p falsum.
 
 Local Notation "⊥" := falsum.
-Local Notation "p '-> q" := (imp p q) (at level 60, right associativity).
-Local Notation "¬ p" := (neg p) (at level 35, p at level 35).
-
+Local Infix "'->" := imp (at level 60, right associativity).
+Local Notation "¬ p" := (neg p) (at level 35, right associativity).
 
 (* Semantics *)
 
@@ -46,7 +45,7 @@ forall p : Proposition, p ∈ Γ -> models' v p = true.
 Definition entails (Γ : unary_predicate Proposition) p :=
 forall v : valuation, models v Γ -> models' v p = true.
 
-Local Notation "Γ ⊨ p" := (entails Γ p) (at level 75).
+Local Infix "⊨" := entails (at level 75).
 
 Definition unsound (Γ : unary_predicate Proposition) := Γ ⊨ ⊥.
 
