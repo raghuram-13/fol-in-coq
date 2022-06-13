@@ -375,6 +375,6 @@ Arguments Ultrafilter B : clear implicits.
 Definition UltrafilterLemma (B : BooleanAlgebra) : Prop :=
 forall F : ProperFilter B, exists F' : Ultrafilter B, F ⊆ F'.
 
-Axiom ultrafilter_lemmma : forall B : BooleanAlgebra, UltrafilterLemma B.
+Axiom ultrafilter_lemma : forall B : BooleanAlgebra, UltrafilterLemma B.
 
 End BooleanAlgebra.
