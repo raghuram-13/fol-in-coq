@@ -282,6 +282,16 @@ Structure ProperFilter := {
   ProperFilter_spec : filter_proper _ProperFilter_as_Filter
 }.
 
+Definition trivial_filter : Filter := {|
+  filterSet := flip equiv ⊤;
+
+  filter_top_spec := equiv_refl ⊤;
+  filter_mono p q h_le h := equiv_top_of_top_le (le_trans (equiv_ge h) h_le);
+  filter_meet_spec p q h_p h_q := ltac:(rewrite <-(meet_top ⊤), <-h_p, <-h_q;
+                                        reflexivity)
+                                  : p ∧ q ∼ ⊤
+|}.
+
 Section AdjoinElement.
 Variables (F : Filter) (p : B).
 
@@ -368,6 +378,8 @@ End Stuff.
 Arguments Filter B : clear implicits.
 Arguments ProperFilter B : clear implicits.
 Arguments Ultrafilter B : clear implicits.
+
+Arguments trivial_filter B : clear implicits.
 
 Definition UltrafilterLemma (B : BooleanAlgebra) : Prop :=
 forall F : ProperFilter B, exists F' : Ultrafilter B, F ⊆ F'.
