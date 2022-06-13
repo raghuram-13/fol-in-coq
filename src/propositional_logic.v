@@ -2,6 +2,7 @@ Set Implicit Arguments.
 
 Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
 Require Lattices.
+Require Coq.Logic.Classical_Prop.
 
 (* Misc *)
 
@@ -529,6 +530,28 @@ Qed.
 Definition inconsistent_iff : inconsistent Γ <-> bot ∼ top := proves_iff ⊥.
 
 End LindenbaumTarskiAlgebra.
+
+Section Completeness.
+
+Import Coq.Logic.Classical_Prop (classic).
+Theorem Completeness' {Γ : unary_predicate Proposition}
+    (h : consistent Γ) : satisfiable Γ.
+cut (exists v, models v Γ).
+{ intros if_so h_uns; destruct if_so as [v h']; contradiction (h_uns v h'). }
+
+set (LTA := LindenbaumTarskiAlgebra Γ).
+unfold consistent in h; rewrite (inconsistent_iff Γ) in h;
+  change (filter_proper (trivial_filter LTA)) in h.
+destruct (ultrafilter_lemma (Build_ProperFilter h)) as [uf ?].
+unshelve eexists.
+{ intro ind.
+  (* Stuck here: can't turn `uf : Proposition -> Prop` to a valuation of
+     type `Proposition -> bool`, even using LEM. *)
+  (* destruct (classic (var ind ∈ uf)); [ exact true | exact false ]. *)
+  admit. }
+Admitted.
+
+End Completeness.
 
 End ConnectionWithSemantics.
 
