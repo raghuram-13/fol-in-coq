@@ -239,8 +239,8 @@ Definition join_assoc p q r : (p ∨ q) ∨ r ∼ p ∨ (q ∨ r) := conj
 
 End join.
 
-Definition join_distrib_meet' p q r : p ∨ (q ∧ r) ≥ (p ∨ q) ∧ (p ∨ r).
-Admitted.
+(* Definition join_distrib_meet' p q r : p ∨ (q ∧ r) ≥ (p ∨ q) ∧ (p ∨ r).
+Admitted. *)
 
 (* Can't get setoid rewriting/etc. to work *)
 Definition le_of_meet_bot_of_join_top p q r
