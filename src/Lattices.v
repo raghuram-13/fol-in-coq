@@ -372,9 +372,9 @@ Arguments Filter B : clear implicits.
 Arguments ProperFilter B : clear implicits.
 Arguments Ultrafilter B : clear implicits.
 
-Definition BPIT (B : BooleanAlgebra) : Prop :=
+Definition UltrafilterLemma (B : BooleanAlgebra) : Prop :=
 forall F : ProperFilter B, exists F' : Ultrafilter B, F ⊆ F'.
 
-Axiom boolean_prime_ideal_theorem : forall B : BooleanAlgebra, BPIT B.
+Axiom ultrafilter_lemmma : forall B : BooleanAlgebra, UltrafilterLemma B.
 
 End BooleanAlgebra.
