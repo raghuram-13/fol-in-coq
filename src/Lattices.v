@@ -51,10 +51,10 @@ Definition equiv_trans : Transitive equiv := fun _ _ _ h1 h2 =>
 conj (le_trans (equiv_le h1) (equiv_le h2))
      (le_trans (equiv_le_rev h2) (equiv_le_rev h1)).
 
-Instance equiv_equivalence : Equivalence equiv :=
+#[export] Instance equiv_equivalence : Equivalence equiv :=
 Build_Equivalence equiv (@equiv_refl) equiv_sym equiv_trans.
 
-Instance le_respects_equiv : Proper (equiv ==> equiv ==> iff) X.(le) :=
+#[export] Instance le_respects_equiv : Proper (equiv ==> equiv ==> iff) X.(le) :=
 fun _ _ h_x _ _ h_y => conj
 (fun h_le_1 => le_trans (le_trans (equiv_ge h_x) h_le_1) (equiv_le h_y))
 (fun h_le_2 => le_trans (le_trans (equiv_le h_x) h_le_2) (equiv_ge h_y)).
@@ -189,7 +189,7 @@ fun x1 x2 h_x y1 y2 h_y => le_meet_of_le_both
   (le_trans (meet_le_left x1 y1) h_x)
   (le_trans (meet_le_right x1 y1) h_y).
 
-Instance meet_respects_equiv : Proper (equiv ==> equiv ==> equiv) meet :=
+#[export] Instance meet_respects_equiv : Proper (equiv ==> equiv ==> equiv) meet :=
 binop_respects_equiv_of_mono meet_mono.
 
 Definition meet_top p : p ∧ ⊤ ∼ p :=
@@ -220,7 +220,7 @@ fun x1 x2 h_x y1 y2 h_y => join_le_of_both_le
   (le_trans h_x (left_le_join x2 y2))
   (le_trans h_y (right_le_join x2 y2)).
 
-Instance join_respects_equiv : Proper (equiv ==> equiv ==> equiv) join :=
+#[export] Instance join_respects_equiv : Proper (equiv ==> equiv ==> equiv) join :=
 binop_respects_equiv_of_mono join_mono.
 
 Definition join_bot p : p ∨ ⊥ ∼ p :=
