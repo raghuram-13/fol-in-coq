@@ -142,6 +142,11 @@ Module BooleanAlgebra.
 }.
 Arguments isBooleanAlgebra [B] le {_}, [B] le _.
 
+(* Specifying multiple argument sequences like this should allow us
+   to either omit or specify all the `carrier` arguments, which is
+   convenient. *)
+(* Specifying multiple implicit arguments not working only when
+   the conclusion type is a ≤ instead of an ∼. Why? *)
 (* Arguments meet_le_left {_ _ _ _} p q, {_ _ _ _ p q}.
 Arguments meet_le_right {_ _ _ _} p q, {_ _ _ _ p q}.
 Arguments left_le_join {_ _ _ _} p q, {_ _ _ _ p q}.
