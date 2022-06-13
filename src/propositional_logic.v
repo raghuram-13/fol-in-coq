@@ -47,7 +47,11 @@ forall v : valuation, models v Γ -> models' v p = true.
 
 Local Infix "⊨" := entails (at level 75).
 
-Definition unsound (Γ : unary_predicate Proposition) := Γ ⊨ ⊥.
+Section ModelTerminology. Variable (assumptions : unary_predicate Proposition).
+Definition valid         : Prop := forall v : valuation, models v assumptions.
+Definition unsatisfiable : Prop := forall v : valuation, ~models v assumptions.
+Definition satisfiable   : Prop := ~unsatisfiable.
+End ModelTerminology.
 
 
 (* Proofs *)
@@ -165,8 +169,10 @@ intros x h; rec h.
 
 (* Misc *)
 
-Definition inconsistent (assumptions : Proposition -> Type) : Prop :=
-[assumptions |- ⊥].
+Section ConsistencyTerminology. Variable (assumptions : Proposition -> Type).
+Definition inconsistent : Prop := [assumptions |- ⊥].
+Definition consistent : Prop := ~inconsistent.
+End ConsistencyTerminology.
 
 (* Convenience function written on the fly for checking the size of proofs. *)
 Fixpoint size {Γ} {p} (proof : Γ |- p) : nat := match proof with
@@ -369,6 +375,8 @@ Defined.
 
 
 
+Section ConnectionWithSemantics.
+
 Theorem soundness_theorem (Γ : unary_predicate Proposition) p
     : [Γ |- p] -> Γ ⊨ p.
 intros [proof] v h.
@@ -385,9 +393,6 @@ induction proof as [p h_in|p q|p q r|p|p q ? h_i_imp ? h_i_p]; [
 ].
 Qed.
 
-
-
-Section Completeness.
 
 Import Coq.Classes.RelationClasses (Reflexive, Transitive, PreOrder).
 Implicit Types (Γ : Proposition -> Type) (* (p q r : Proposition) *).
@@ -482,12 +487,13 @@ apply disj_univ
   | solve [apply left_proves_disj | apply right_proves_disj] ]).
 Defined.
 
+Import (coercions, notations) Lattices.
+Import -(notations) Lattices.BooleanAlgebra.
 Section LindenbaumTarskiAlgebra.
-Import -(notations) Lattices.BooleanAlgebra. Import Lattices (le).
 
-Definition LindenbaumTarskiAlgebra {Γ} : BooleanAlgebra :=
-@Build_BooleanAlgebra {| le := provable_le (Γ := Γ) |}
-{|
+Variable Γ : Proposition -> Type.
+
+Instance : isBooleanAlgebra (provable_le (Γ := Γ)) := {|
   join := disj; meet := conj; complement p := ¬p; bot := ⊥; top := ¬⊥;
 
   left_le_join p q := has_proof (left_proves_disj p q);
@@ -506,8 +512,24 @@ Definition LindenbaumTarskiAlgebra {Γ} : BooleanAlgebra :=
 
   meet_distrib_join' p q r := and_distrib_or' p q r
 |}.
+
+Definition LindenbaumTarskiAlgebra : BooleanAlgebra :=
+@Build_BooleanAlgebra {| Lattices.le := provable_le (Γ := Γ) |} _.
+
+(* Express some properties in terms of the Lindenbaum-Tarski algebra. *)
+Lemma proves_iff (p : LindenbaumTarskiAlgebra) : [Γ |- p] <-> (p ∼ top).
+split.
++ intros [h].
+  apply equiv_top_of_top_le, has_proof, (proof_mono (fun _ h => inl h)).
+  exact h.
++ intros [? [h]]. apply has_proof, proof_trans' with (Γ' := eq top)
+  ; [ intro_assumption; exact proves_true | exact h ].
+Qed.
+
+Definition inconsistent_iff : inconsistent Γ <-> bot ∼ top := proves_iff ⊥.
+
 End LindenbaumTarskiAlgebra.
 
-End Completeness.
+End ConnectionWithSemantics.
 
 End Main.
