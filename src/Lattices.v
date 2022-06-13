@@ -82,13 +82,17 @@ Section SpecialElements.
 
 End SpecialElements.
 
-#[projections(primitive)] Class isBooleanAlgebra (B : Preordered) := {
-  BooleanAlgebra_PreOrder :> PreOrder B.(le) := B.(pre);
+Module BooleanAlgebra.
 
-  meet : B -> B -> B;
-  join : B -> B -> B;
-  top : B; bot : B;
-  complement : B -> B;
+#[projections(primitive)] Class isBooleanAlgebra B le `(@PreOrder B le) := {
+  isBooleanAlgebra_PreOrder :> PreOrder le := _;
+  (* This is purely to allow us to use the ≤ and ∼ notations *)
+  _BA_pre : Preordered := {| carrier := B; le := le; pre := _ |};
+
+  meet : _BA_pre -> _BA_pre -> _BA_pre;
+  join : _BA_pre -> _BA_pre -> _BA_pre;
+  top : _BA_pre; bot : _BA_pre;
+  complement : _BA_pre -> _BA_pre;
 
   meet_le_left p q : meet p q ≤ p; meet_le_right p q : meet p q ≤ q;
   le_meet_of_le_both {p q r} : r ≤ p -> r ≤ q -> r ≤ meet p q;
@@ -136,25 +140,26 @@ End SpecialElements.
            ;[apply meet_le_left | apply meet_le_right] ])
        (join_distrib_meet' p q r) *)
 }.
+Arguments isBooleanAlgebra [B] le {_}, [B] le _.
 
-(* Arguments meet_le_left {_ _} p q, {_ _ p q}.
-Arguments meet_le_right {_ _} p q, {_ _ p q}.
-Arguments left_le_join {_ _} p q, {_ _ p q}.
-Arguments right_le_join {_ _} p q, {_ _ p q}.
-Arguments bot_le {_ _} p, {_ _ p}.
-Arguments le_top {_ _} p, {_ _ p}.
-Arguments meet_compl_le_bot {_ _} p, {_ _ p}.
-Arguments top_le_join_compl {_ _} p, {_ _ p}. *)
-Arguments meet_compl_equiv_bot {_ _} p, {_ _ p}.
-Arguments join_compl_equiv_top {_ _} p, {_ _ p}.
-(* Argument meet_distrib_join' {_ _} p q r, {_ _ p q r}. *)
-Arguments meet_distrib_join {_ _} p q r, {_ _ p q r}.
-(* (* Arguments join_distrib_meet' {_ _} p q r, {_ _ p q r}. *)
-Arguments join_distrib_meet {_ _} p q r, {_ _ p q r}. *)
+(* Arguments meet_le_left {_ _ _ _} p q, {_ _ _ _ p q}.
+Arguments meet_le_right {_ _ _ _} p q, {_ _ _ _ p q}.
+Arguments left_le_join {_ _ _ _} p q, {_ _ _ _ p q}.
+Arguments right_le_join {_ _ _ _} p q, {_ _ _ _ p q}.
+Arguments bot_le {_ _ _ _} p, {_ _ _ _ p}.
+Arguments le_top {_ _ _ _} p, {_ _ _ _ p}.
+Arguments meet_compl_le_bot {_ _ _ _} p, {_ _ _ _ p}.
+Arguments top_le_join_compl {_ _ _ _} p, {_ _ _ _ p}. *)
+Arguments meet_compl_equiv_bot {_ _ _ _} p, {_ _ _ _ p}.
+Arguments join_compl_equiv_top {_ _ _ _} p, {_ _ _ _ p}.
+(* Argument meet_distrib_join' {_ _ _ _} p q r, {_ _ _ _ p q r}. *)
+Arguments meet_distrib_join {_ _ _ _} p q r, {_ _ _ _ p q r}.
+(* (* Arguments join_distrib_meet' {_ _ _ _} p q r, {_ _ _ _ p q r}. *)
+Arguments join_distrib_meet {_ _ _ _} p q r, {_ _ _ _ p q r}. *)
 
 Structure BooleanAlgebra := {
   preCarrier :> Preordered;
-  _is_boolean_algebra : isBooleanAlgebra preCarrier
+  _is_boolean_algebra : isBooleanAlgebra preCarrier.(le)
 }.
 #[export] Existing Instance _is_boolean_algebra.
 
@@ -366,3 +371,5 @@ Definition BPIT (B : BooleanAlgebra) : Prop :=
 forall F : ProperFilter B, exists F' : Ultrafilter B, F ⊆ F'.
 
 Axiom boolean_prime_ideal_theorem : forall B : BooleanAlgebra, BPIT B.
+
+End BooleanAlgebra.

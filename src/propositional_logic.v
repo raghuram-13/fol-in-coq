@@ -23,15 +23,10 @@ Inductive Proposition :=
 (* Other operations and notation. *)
 
 Definition neg (p : Proposition)    : Proposition := imp p falsum.
-(* Definition truth                    : Proposition := neg falsum. *)
-(* Definition conj (p q : Proposition) : Proposition := neg (imp p (neg q)). *)
-(* Definition disj (p q : Proposition) : Proposition := imp (neg p) q. *)
 
 Local Notation "⊥" := falsum.
 Local Notation "p '-> q" := (imp p q) (at level 60, right associativity).
 Local Notation "¬ p" := (neg p) (at level 35, p at level 35).
-(* Local Notation "p '/\ q" := (conj p q) (at level 80, right associativity). *)
-(* Local Notation "p '\/ q" := (disj p q) (at level 80, right associativity). *)
 
 
 (* Semantics *)
@@ -395,80 +390,124 @@ Qed.
 
 Section Completeness.
 
-Section BooleanAlgebra.
 Import Coq.Classes.RelationClasses (Reflexive, Transitive, PreOrder).
-Import -(notations) Lattices.
-Context {Γ : Proposition -> Type}.
+Implicit Types (Γ : Proposition -> Type) (* (p q r : Proposition) *).
 
-Definition provable_le p q := [Γ;; p |- q].
+Definition provable_le {Γ} p q := [Γ;; p |- q].
 
-Definition provable_le_refl : Reflexive provable_le := @proof_refl Γ.
+Definition provable_le_refl {Γ} : Reflexive provable_le := @proof_refl Γ.
 
-Definition provable_le_trans : Transitive provable_le := fun p q r =>
+Definition provable_le_trans {Γ} : Transitive provable_le := fun p q r =>
 fun proof1 proof2 => provable_trans (Γ := Γ ⊔ eq p) (Γ' := Γ ⊔ eq q)
   ltac:(intro_assumption; [ proof_assumption using only assumption
                           | exact proof1 ])
   proof2.
 
-Instance : PreOrder provable_le :=
+Instance : forall Γ, PreOrder (provable_le (Γ := Γ)) := fun Γ =>
 {| Coq.Classes.RelationClasses.PreOrder_Reflexive := provable_le_refl;
    Coq.Classes.RelationClasses.PreOrder_Transitive := provable_le_trans |}.
 
-Definition LindenbaumTarksiAlgebra : BooleanAlgebra. refine {|
-  preCarrier := {| le := provable_le |};
+Let disj p q := (p '-> q) '-> q.
+Let conj p q := ¬(p '-> ¬q).
 
-  or p q := (p '-> q) '-> q; and p q := ¬(p '-> ¬q);
-  not p := ¬p; false := ⊥; true := ¬⊥;
+Let left_proves_disj {Γ} p q : Γ;; p |- disj p q. refine (
+deduction_theorem (modus_ponens _ _)
+); proof_assumption. Defined.
 
-  false_spec p := modus_ponens (exfalso p) proof_refl : [Γ;; ⊥ |- p];
-  true_spec p  := id ⊥                                : [Γ;; p |- ¬⊥];
+Let right_proves_disj {Γ} p q : Γ;; q |- disj p q. refine (
+deduction_theorem _
+); proof_assumption. Defined.
 
-  or_spec p q r := conj
-    (fun h_or => ltac:(split
-        ; refine (provable_le_trans (deduction_theorem _) h_or)
-        (* TPT: (Γ;; p; p '-> q |- q) and (Γ;; q; p '-> q |- q) resp. *)
-        ; [ apply modus_ponens with (hyp := p) | ]; proof_assumption)
-      : [Γ;; p |- r] /\ [Γ;; q |- r])
-    (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
-      ?[or_spec'] : Γ;; (p '-> q) '-> q |- r));
+(* We need to use this across multiple Γ to prove distributivity later.
+   This is the reason why Γ is not a section variable. *)
+Let disj_univ {Γ} p q r (h_p: Γ;;p |- r) (h_q: Γ;;q |- r) : Γ;; disj p q |- r.
+apply (modus_ponens (by_contradiction r)), deduction_theorem.
+assert (mt_convert: forall p', Γ;; p' |- r -> Γ;; (p '-> q) '-> q; ¬r |- ¬p').
+{ intros p' proof. apply proof_mono with (Γ := Γ ⊔ eq (¬r)); [
+                     intro_assumption; detect_assumption | ].
+  apply deduction_theorem in proof. apply deduction_theorem_conv.
+  exact (modus_ponens (modus_tollens p' r) proof). }
+apply (modus_ponens (mt_convert q h_q)).
+apply modus_ponens with (hyp := p '-> q); [ proof_assumption | ].
+apply (modus_ponens (from_contradiction p q)). exact (mt_convert p h_p).
+Defined.
 
-  and_spec p q r := conj
-    (fun h_and => ltac:(split
-        ;refine (provable_le_trans h_and (modus_ponens (by_contradiction _) _));
-        red_by_dt to (eq (p '-> ¬q)) by apply modus_ponens with(hyp := p '-> ¬q)
-        ; [ exact (from_contradiction p (¬q)) | exact (rule_1 (¬q) p) ])
-      : [Γ;; r |- p] /\ [Γ;; r |- q])
-    (fun '(conj (inhabits h_p) (inhabits h_q)) => has_proof (
-      ltac:(eapply (proof_mono (fun _ h => inl h)) in h_p, h_q; exact (
-      deduction_theorem (modus_ponens_binary (proof_refl (p '-> ¬q)) h_p h_q)))
-      : Γ;; r |- ¬(p '-> ¬q)));
+Let conj_proves_left {Γ} p q : Γ;; conj p q |- p. refine (
+modus_ponens (by_contradiction p) (deduction_theorem (
+modus_ponens _ (modus_ponens (from_contradiction p (¬q)) _)))
+); proof_assumption. Defined.
 
-  and_not' p := modus_ponens proof_refl (absurd p ⊥) : [Γ;; ¬(p '-> ¬¬p) |- ⊥];
-  or_not' p := ltac:(apply deduction_theorem;
-        red_by_dt to (eq (¬p)) by apply modus_ponens with (hyp := p);
-        exact proof_refl)                            : _ |- (p '-> ¬p) '-> ¬p;
+Let conj_proves_right {Γ} p q : Γ;; conj p q |- q. refine (
+modus_ponens (by_contradiction q) (deduction_theorem (
+modus_ponens _ (deduction_theorem _)))
+); proof_assumption. Defined.
 
-  and_distrib_or p q r := ?[and_distrib_or]
+Let conj_proves' {Γ} p q r : Γ;; p; q |- r -> Γ;; conj p q |- r :=
+proof_trans (Γ := Γ ⊔ eq (conj p q)) (Γ' := (Γ ⊔ eq p) ⊔ eq q) (p := r)
+  ltac:(intro_assumption; [ proof_assumption using only assumption
+                          | apply conj_proves_left | apply conj_proves_right ]).
+
+Let conj_univ' {Γ} p q : Γ;; p; q |- conj p q. refine (
+deduction_theorem (modus_ponens_binary _ _ _)
+); proof_assumption. Defined.
+
+Let conj_univ {Γ} p q (h_p : Γ |- p) (h_q : Γ |- q) : Γ |- conj p q.
+(* eapply (proof_mono (fun _ h => inl h)) in h_p, h_q; exact (
+deduction_theorem (modus_ponens_binary proof_refl h_p h_q)). *)
+apply proof_trans with (Γ' := eq p ⊔ eq q)
+; [ intro_assumption; assumption | ].
+apply proof_trans with (Γ' := (∅ ⊔ eq p) ⊔ eq q); [
+  intro_assumption; [ contradiction | proof_assumption .. ] | ].
+apply conj_univ'.
+Defined.
+
+Let false_proves {Γ} p : Γ;; ⊥ |- p := modus_ponens (exfalso p) proof_refl.
+Let proves_true {Γ} : Γ |- ¬⊥ := id ⊥.
+
+Let conj_not_proves_false {Γ} p : Γ;; conj p (¬p) |- ⊥ :=
+(* conj_proves' (ltac:(eapply modus_ponens; proof_assumption) : Γ;;p;¬p |- ⊥) *)
+modus_ponens proof_refl (absurd p ⊥).
+
+Let proves_disj_not {Γ} p : Γ |- disj p (¬p).
+apply deduction_theorem.
+red_by_dt to (eq (¬p)) by apply modus_ponens with (hyp := p).
+exact (proof_refl (p '-> ¬p)).
+Defined.
+
+Let and_distrib_or' {Γ} p q r
+    : Γ;; conj p (disj q r) |- disj (conj p q) (conj p r).
+apply conj_proves'.
+apply disj_univ
+; (eapply proof_trans with (Γ' := ∅ ⊔ eq (conj p _)); [
+    intro_assumption; [ contradiction | apply conj_univ' ]
+  | solve [apply left_proves_disj | apply right_proves_disj] ]).
+Defined.
+
+Section LindenbaumTarksiAlgebra.
+Import -(notations) Lattices.BooleanAlgebra. Import Lattices (le).
+
+Definition LindenbaumTarksiAlgebra {Γ} : BooleanAlgebra :=
+@Build_BooleanAlgebra {| le := provable_le (Γ := Γ) |}
+{|
+  join := disj; meet := conj; complement p := ¬p; bot := ⊥; top := ¬⊥;
+
+  left_le_join p q := has_proof (left_proves_disj p q);
+  right_le_join p q := has_proof (right_proves_disj p q);
+  join_le_of_both_le p q r '(inhabits h_p) '(inhabits h_q) := disj_univ h_p h_q;
+
+  (* `has_proof` coercion is sometimes not being inserted for some reason. *)
+  meet_le_left p q := has_proof (conj_proves_left p q);
+  meet_le_right p q := has_proof (conj_proves_right p q);
+  le_meet_of_le_both p q r '(inhabits h_p) '(inhabits h_q) := conj_univ h_p h_q;
+
+  bot_le p := false_proves p; le_top p := proves_true;
+
+  meet_compl_le_bot p := conj_not_proves_false p;
+  top_le_join_compl p := proves_disj_not p;
+
+  meet_distrib_join' p q r := and_distrib_or' p q r
 |}.
-
-[or_spec']: {
-  apply (modus_ponens (by_contradiction r)), deduction_theorem.
-  assert (mt_convert: forall p', Γ;; p' |- r -> Γ;; (p '-> q) '-> q; ¬r |- ¬p').
-  { intros p' proof. apply proof_mono with (Γ := Γ ⊔ eq (¬r)); [
-                       intro_assumption; detect_assumption | ].
-    apply deduction_theorem in proof. apply deduction_theorem_conv.
-    exact (modus_ponens (modus_tollens p' r) proof). }
-  apply (modus_ponens (mt_convert q h_q)).
-  apply modus_ponens with (hyp := p '-> q); [ proof_assumption | ].
-  apply (modus_ponens (from_contradiction p q)). exact (mt_convert p h_p).
-}
-
-[and_distrib_or]: {
-  admit.
-}
-Admitted.
-
-End BooleanAlgebra.
+End LindenbaumTarksiAlgebra.
 
 End Completeness.
 
