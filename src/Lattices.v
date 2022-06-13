@@ -194,9 +194,11 @@ binop_respects_equiv_of_mono meet_mono.
 
 Definition meet_top p : p ∧ ⊤ ∼ p :=
 conj (meet_le_left p ⊤) (le_meet_of_le_both (le_refl p) (le_top p)).
+Definition top_meet p : ⊤ ∧ p ∼ p :=
+conj (meet_le_right ⊤ p) (le_meet_of_le_both (le_top p) (le_refl p)).
 
-Definition meet_bot p : p ∧ ⊥ ∼ ⊥ :=
-conj (meet_le_right p ⊥) (bot_le _).
+Definition meet_bot p : p ∧ ⊥ ∼ ⊥ := equiv_bot_of_le_bot (meet_le_right p ⊥).
+Definition bot_meet p : ⊥ ∧ p ∼ ⊥ := equiv_bot_of_le_bot (meet_le_left ⊥ p).
 
 Definition meet_comm p q : p ∧ q ∼ q ∧ p := conj
 (le_meet_of_le_both (meet_le_right p q) (meet_le_left p q))
@@ -225,9 +227,11 @@ binop_respects_equiv_of_mono join_mono.
 
 Definition join_bot p : p ∨ ⊥ ∼ p :=
 conj (join_le_of_both_le (le_refl p) (bot_le p)) (left_le_join p ⊥).
+Definition bot_join p : ⊥ ∨ p ∼ p :=
+conj (join_le_of_both_le (bot_le p) (le_refl p)) (right_le_join ⊥ p).
 
-Definition join_top p : p ∨ ⊤ ∼ ⊤ :=
-conj (le_top _) (right_le_join p ⊤).
+Definition join_top p : p ∨ ⊤ ∼ ⊤ := equiv_top_of_top_le (right_le_join p ⊤).
+Definition top_join p : ⊤ ∨ p ∼ ⊤ := equiv_top_of_top_le (left_le_join ⊤ p).
 
 Definition join_comm p q : p ∨ q ∼ q ∨ p := conj
 (join_le_of_both_le (right_le_join q p) (left_le_join q p))
@@ -247,17 +251,12 @@ End join.
 (* Definition join_distrib_meet' p q r : p ∨ (q ∧ r) ≥ (p ∨ q) ∧ (p ∨ r).
 Admitted. *)
 
-(* Can't get setoid rewriting/etc. to work *)
 Definition le_of_meet_bot_of_join_top p q r
     : p ∧ q ∼ ⊥ -> p ∨ r ∼ ⊤ -> q ≤ r.
-intros h1 h2.
+intros h1 h2. rewrite meet_comm in h1.
 apply (meet_respects_equiv (equiv_refl q)) in h2.
-apply (equiv_trans (equiv_sym (meet_distrib_join q p r))) in h2.
-apply (fun h => equiv_trans h (meet_top q)) in h2.
-apply (equiv_trans (equiv_sym (join_respects_equiv (equiv_trans (meet_comm q p) h1) (equiv_refl (q ∧ r))))) in h2.
-apply (equiv_trans (equiv_sym (equiv_trans (join_comm ⊥ _) (join_bot _)))) in h2.
-apply (le_respects_equiv h2 equiv_refl).
-exact (meet_le_right q r).
+rewrite meet_distrib_join, meet_top, h1, bot_join in h2.
+rewrite <-h2; exact (meet_le_right q r).
 Defined.
 
 Definition le_compl_of_meet_bot p q (h : p ∧ q ∼ ⊥) : q ≤ ¬p :=
