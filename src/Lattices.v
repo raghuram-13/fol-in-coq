@@ -275,6 +275,10 @@ Structure Filter := {
   filter_meet_spec p q : p ∈ filterSet -> q ∈ filterSet -> p ∧ q ∈ filterSet;
 }.
 
+#[export] Instance filter_respects_equiv (F : Filter)
+    : Proper (A := unary_predicate B) (equiv ==> iff) F := fun p q h =>
+conj (F.(filter_mono) (equiv_le h)) (F.(filter_mono) (equiv_ge h)).
+
 Definition filter_proper (F : Filter) : Prop := ⊥ ∉ F.
 
 Structure ProperFilter := {
@@ -364,6 +368,71 @@ split.
   contradiction (h_proper' h_bot_in').
 Qed.
 
+Section OpMembership.
+
+Definition elem_meet_and p q : p ∧ q ∈ F <-> p ∈ F /\ q ∈ F. split.
++ intro; split; (apply F.(filter_mono) with (p := p ∧ q)
+                 ; [ apply meet_le_left + apply meet_le_right | assumption ]).
++ intros []; apply F.(filter_meet_spec); assumption.
+Qed.
+
+Definition not_elem_and_elem_compl (h : filter_proper F) p : ~(p ∈ F /\ ¬p ∈ F).
+intros []. apply h.
+apply (F.(filter_mono) (meet_compl_le_bot p)).
+apply F.(filter_meet_spec) with (p := p) (q := ¬p); assumption.
+Defined.
+
+Definition elem_compl_not (h_em : forall p, p ∈ F \/ p ∉ F)
+                          (h : filter_maximal_proper)
+    p : ¬p ∈ F <-> p ∉ F.
+rewrite (filter_maximal_iff_mem_or_compl_mem h_em) in h; destruct h as [? h].
+split.
++ intros ? ?; refine (not_elem_and_elem_compl _ (conj _ _)); eassumption.
++ intro; destruct (h p); [ contradiction | assumption ].
+Defined.
+
+Definition elem_join_of_or_elem {p q} : p ∈ F \/ q ∈ F -> p ∨ q ∈ F.
+intro h; destruct h as [h|h]; refine (F.(filter_mono) _ h)
+; [ apply left_le_join | apply right_le_join ].
+Defined.
+
+Definition elem_join_or (h_em : forall p, p ∈ F \/ p ∉ F)
+                        (h : filter_maximal_proper)
+    p q : p ∨ q ∈ F <-> p ∈ F \/ q ∈ F.
+split.
++ rewrite (filter_maximal_iff_mem_or_compl_mem h_em) in h;
+    destruct h as [h_proper h].
+  destruct (h p), (h q); intro h_join; [
+    solve [ left + right; assumption ] ..
+  | exfalso ].
+  assert (h_meet : ¬p ∧ ¬q ∈ F) by (eapply F.(filter_meet_spec); assumption).
+  apply (F.(filter_meet_spec) h_join) in h_meet.
+  assert (h_le : (p ∨ q) ∧ ¬p ∧ ¬q ≤ ⊥) by (
+    rewrite meet_comm, meet_distrib_join;
+    apply join_le_of_both_le; [
+      rewrite meet_comm, <-meet_assoc
+    | rewrite meet_assoc, meet_comm with (q:=q)
+    ]; rewrite meet_compl_equiv_bot; [apply meet_le_left|apply meet_le_right]).
+  eapply h_proper; exact (F.(filter_mono) h_le h_meet).
++ exact elem_join_of_or_elem.
+Defined.
+
+Definition elem_impl_impl (h_em : forall p, p ∈ F \/ p ∉ F)
+                          (h : filter_maximal_proper)
+    p q : ¬p ∨ q ∈ F <-> (p ∈ F -> q ∈ F).
+split.
++ intros h_int h_p.
+  destruct (h_em q); apply (elem_join_or h_em h), or_comm in h_int as []; [
+    assumption ..
+  | exfalso; eapply not_elem_and_elem_compl; [ exact (proj1 h) |
+      split; eassumption ]].
++ intro h_impl. apply elem_join_of_or_elem.
+  rewrite (filter_maximal_iff_mem_or_compl_mem h_em) in h; destruct h as [? h].
+  destruct (h p); [ right; apply h_impl | left ]; assumption.
+Defined.
+
+End OpMembership.
+
 End Ultrafilters.
 Structure Ultrafilter := {
   _Ultrafilter_as_Filter : Filter;
@@ -384,6 +453,11 @@ Arguments trivial_filter B : clear implicits.
 Definition UltrafilterLemma (B : BooleanAlgebra) : Prop :=
 forall F : ProperFilter B, exists F' : Ultrafilter B, F ⊆ F'.
 
+Definition UltrafilterLemmaEm (B : BooleanAlgebra) :=
+forall F : ProperFilter B, {F' : Ultrafilter B & forall p, {p ∈ F'}+{p ∉ F'}
+                               & F ⊆ F'}.
+
 Axiom ultrafilter_lemma : forall B : BooleanAlgebra, UltrafilterLemma B.
+Axiom ultrafilter_lemma_em : forall B : BooleanAlgebra, UltrafilterLemmaEm B.
 
 End BooleanAlgebra.
