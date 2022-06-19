@@ -1,4 +1,15 @@
-Require Coq.Bool.Bool.
+Require Coq.Program.Basics Coq.Bool.Bool.
+
+Section Logic. Implicit Types p q r : Prop.
+Import Coq.Program.Basics. Local Open Scope program_scope.
+
+Definition not_elim {p q} : ~p -> p -> q := compose (False_ind q).
+Definition absurd {p q} : p -> ~p -> q := flip not_elim.
+
+Definition or_elim_left {p q} : p \/ q -> ~p -> q := or_ind absurd const.
+Definition or_elim_right {p q} : p \/ q -> ~q -> p := or_ind const absurd.
+
+End Logic.
 
 Section Is_true.
 Import Coq.Bool.Bool. Export Coq.Bool.Bool (Is_true).

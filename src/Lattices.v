@@ -489,7 +489,7 @@ Definition elem_compl_not (h_em : forall p, p ∈ F \/ p ∉ F)
 rewrite (filter_maximal_iff_mem_or_compl_mem h_em) in h; destruct h as [? h].
 split.
 + intros ? ?; refine (not_elem_and_elem_compl _ (conj _ _)); eassumption.
-+ intro; destruct (h p); [ contradiction | assumption ].
++ exact (or_elim_left (h p)).
 Defined.
 
 Definition elem_join_of_or_elem {p q} : p ∈ F \/ q ∈ F -> p ∨ q ∈ F.
