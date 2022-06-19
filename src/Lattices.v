@@ -3,6 +3,8 @@ Set Implicit Arguments. Unset Strict Implicit.
 Require Import Coq.Program.Basics.
 Require Import SetNotations.
 Require Import Coq.Classes.RelationClasses.
+Require Import Util.
+Import (notations) EqNotations.
 
 (* "Setoid handling" *)
 Require Coq.Classes.Morphisms. Import (notations) Coq.Classes.Morphisms.
@@ -179,9 +181,9 @@ Infix    "∧"   := meet           (at level 65, right associativity).
 Infix    "∨"   := join           (at level 65, right associativity).
 Notation "¬ x" := (complement x) (at level 35, right associativity).
 
-Section Stuff. Context {B : BooleanAlgebra}. Implicit Types p q r : B.
+Section Stuff. Context {B : BooleanAlgebra}.
 
-Section BasicResults.
+Section BasicResults. Implicit Types p q r : B.
 
 Section meet.
 
@@ -271,6 +273,63 @@ Definition compl_compl p : ¬¬p ∼ p := conj
   (le_compl_of_meet_bot (equiv_trans (meet_comm _ _) (meet_compl_equiv_bot p))).
 
 End BasicResults.
+
+Section Homomorphisms.
+Context {B1 B2 : BooleanAlgebra}.
+Implicit Types p q r : B1.
+
+Class isBooleanAlgebraHom (f : B1 -> B2) := {
+  hom_mono : Proper (le ==> le) f;
+
+  hom_preserves_meet' p q : f (p ∧ q) ≥ f p ∧ f q;
+  hom_preserves_meet  p q : f (p ∧ q) ∼ f p ∧ f q := conj
+    (le_meet_of_le_both (hom_mono (meet_le_left p q))
+                        (hom_mono (meet_le_right p q)))
+    (hom_preserves_meet' p q);
+
+  hom_preserves_join' p q : f (p ∨ q) ≤ f p ∨ f q;
+  hom_preserves_join  p q : f (p ∨ q) ∼ f p ∨ f q := conj
+    (hom_preserves_join' p q)
+    (join_le_of_both_le (hom_mono (left_le_join p q))
+                        (hom_mono (right_le_join p q)));
+
+  hom_preserves_bot' : f ⊥ ≤ ⊥; hom_preserves_top' : f ⊤ ≥ ⊤;
+  hom_preserves_bot : f ⊥ ∼ ⊥ := equiv_bot_of_le_bot hom_preserves_bot';
+  hom_preserves_top : f ⊤ ∼ ⊤ := equiv_top_of_top_le hom_preserves_top';
+
+  hom_preserves_compl p : f (¬p) ∼ ¬f p;
+}.
+#[global] Arguments hom_mono [f] {_}.
+
+Structure BooleanAlgebraHom := {
+  hom_function :> B1 -> B2;
+  _is_boolean_algebra_hom : isBooleanAlgebraHom hom_function
+}.
+#[export] Existing Instance _is_boolean_algebra_hom.
+
+End Homomorphisms.
+Arguments BooleanAlgebraHom B1 B2 : clear implicits.
+
+Section bool.
+
+#[export] Instance : PreOrder Bool.le := ltac:(
+split; unfold Reflexive, Transitive
+; Bool.destr_bool).
+
+#[export, refine] Instance : isBooleanAlgebra Coq.Bool.Bool.le := {|
+  meet := andb; join := orb; bot := false; top := true; complement := negb
+|}. all:(intros; simpl in *; Bool.destr_bool). Defined.
+
+#[global] Canonical Structure boolBooleanAlgebra : BooleanAlgebra := {|
+  preCarrier := {| le := Bool.le |}
+|}.
+
+Lemma eq_of_equiv_bool (p q : boolBooleanAlgebra) : p ∼ q -> p = q.
+simpl in p, q. intro h; unfold equiv in h; simpl in h; destruct h.
+Bool.destr_bool. Qed.
+(* Hint Resolve eq_of_equiv_bool : core. *)
+
+End bool.
 
 Section Filters.
 
@@ -379,6 +438,37 @@ split.
   contradiction (h_proper' h_bot_in').
 Qed.
 
+Section Ultrafilter'. Import Coq.Bool.Bool (Is_true).
+Definition Ultrafilter' := BooleanAlgebraHom B boolBooleanAlgebra.
+
+Variable uf : Ultrafilter'. Unset Implicit Arguments.
+
+Definition Ultrafilter'_as_Filter : Filter := {|
+  filterSet p := Is_true (uf p);
+  filter_top_spec := rew <-(eq_of_equiv_bool hom_preserves_top) in
+                     (I : Is_true true);
+  filter_mono p q h_le h_p := ltac:(
+      apply hom_mono with (f := uf) in h_le; only 2: typeclasses eauto;
+      simpl in h_p; rewrite Is_true_iff_eq_true in h_p; rewrite h_p in h_le;
+      destruct (uf q); [ exact I | simpl in h_le; discriminate h_le ])
+    : Is_true (uf q);
+  filter_meet_spec p q h_p h_q := ltac:(
+    rewrite (eq_of_equiv_bool (hom_preserves_meet p q)), Is_true_and; exact
+    (conj h_p h_q)) : Is_true (uf (p ∧ q))
+|}.
+
+Definition Ultrafilter'_is_proper : filter_proper Ultrafilter'_as_Filter :=
+fun (h : Is_true (uf ⊥)) =>
+rew (eq_of_equiv_bool hom_preserves_bot : uf ⊥ = false) in h.
+
+Definition Ultrafilter'_int_em p
+    : p ∈ Ultrafilter'_as_Filter \/ ¬p ∈ Ultrafilter'_as_Filter.
+simpl; rewrite (eq_of_equiv_bool (hom_preserves_compl p) : uf(¬p)=negb(uf p)).
+destruct (uf p); [ left | right ]; exact (I : Is_true true).
+Defined.
+
+Set Implicit Arguments. End Ultrafilter'.
+
 Section OpMembership.
 
 Definition elem_meet_and p q : p ∧ q ∈ F <-> p ∈ F /\ q ∈ F. split.
@@ -452,12 +542,24 @@ Structure Ultrafilter := {
 Coercion _Ultrafilter_as_ProperFilter (F : Ultrafilter) : ProperFilter :=
 Build_ProperFilter (proj1 (Ultrafilter_spec F)).
 
+Coercion Ultrafilter'_as_Ultrafilter (F : Ultrafilter') : Ultrafilter := {|
+  _Ultrafilter_as_Filter := Ultrafilter'_as_Filter F;
+  Ultrafilter_spec := proj2 (filter_maximal_iff_mem_or_compl_mem
+                              (fun p => ltac:(simpl; destruct (F p)
+                                              ; simpl Is_true; intuition)
+                                        : p ∈ Ultrafilter'_as_Filter F
+                                          \/ p ∉ Ultrafilter'_as_Filter F))
+                        (conj (Ultrafilter'_is_proper F)
+                              (Ultrafilter'_int_em F))
+|}.
+
 End Filters.
 
 End Stuff.
 Arguments Filter B : clear implicits.
 Arguments ProperFilter B : clear implicits.
 Arguments Ultrafilter B : clear implicits.
+Arguments Ultrafilter' B : clear implicits.
 
 Arguments trivial_filter B : clear implicits.
 
@@ -465,8 +567,7 @@ Definition UltrafilterLemma (B : BooleanAlgebra) : Prop :=
 forall F : ProperFilter B, exists F' : Ultrafilter B, F ⊆ F'.
 
 Definition UltrafilterLemmaEm (B : BooleanAlgebra) :=
-forall F : ProperFilter B, {F' : Ultrafilter B & forall p, {p ∈ F'}+{p ∉ F'}
-                               & F ⊆ F'}.
+forall F : ProperFilter B, exists F' : Ultrafilter' B, F ⊆ F'.
 
 Axiom ultrafilter_lemma : forall B : BooleanAlgebra, UltrafilterLemma B.
 Axiom ultrafilter_lemma_em : forall B : BooleanAlgebra, UltrafilterLemmaEm B.
