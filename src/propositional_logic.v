@@ -2,6 +2,7 @@ Set Implicit Arguments.
 
 Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
 Require Lattices.
+Require Import Util.
 Require Coq.Bool.Bool.
 
 (* Misc *)
@@ -39,15 +40,6 @@ Fixpoint models' (v : valuation) (p : Proposition) : bool := match p with
 | ⊥ => false
 | p '-> q => implb (models' v p) (models' v q)
 end.
-
-Import Coq.Bool.Bool (Is_true).
-Lemma Is_true_iff_eq_true (b : bool) : Is_true b <-> b = true. split
-;[ apply Coq.Bool.Bool.Is_true_eq_true | apply Coq.Bool.Bool.Is_true_eq_left ].
-Qed.
-
-Definition Is_true_implb (b1 b2 : bool)
-    : Is_true (implb b1 b2) <-> (Is_true b1 -> Is_true b2).
-destruct b1, b2; simpl; intuition. Defined.
 
 Definition models (v : valuation) (Γ : unary_predicate Proposition) : Prop :=
 forall p : Proposition, p ∈ Γ -> Is_true (models' v p).
@@ -537,7 +529,8 @@ split.
   ; [ intro_assumption; exact proves_true | exact h ].
 Qed.
 
-Definition inconsistent_iff : inconsistent Γ <-> bot ∼ top := proves_iff ⊥.
+Definition inconsistent_iff
+    : inconsistent Γ <-> ⊥ ∼[LindenbaumTarskiAlgebra] ¬⊥ := proves_iff ⊥.
 
 Definition imp_as_disj (p q : LindenbaumTarskiAlgebra)
     : (p '-> q : LindenbaumTarskiAlgebra) ∼ disj (¬p) q.
@@ -553,39 +546,27 @@ End LindenbaumTarskiAlgebra.
 
 Section Completeness.
 
-(* Relate sumbool decidability with <-> Is_true decidability. *)
-Lemma bool_of_sumbool_spec P (dec : {P}+{~P})
-    : Is_true (if dec then true else false) <-> P.
-destruct dec; simpl Is_true; intuition.
-Qed.
-
 Theorem Completeness' {Γ : unary_predicate Proposition}
     (h_consistent : consistent Γ) : satisfiable Γ.
 set (LTA := LindenbaumTarskiAlgebra Γ).
 unfold consistent in h_consistent; rewrite (inconsistent_iff Γ) in h_consistent;
   change (filter_proper (trivial_filter LTA)) in h_consistent.
 destruct (ultrafilter_lemma_em (Build_ProperFilter h_consistent))
-  as [[uf h_max] h_uf_em h_incl].
-pose (h_uf_wem := fun p => match h_uf_em p with
-      | left h => or_introl h | right h => or_intror h
-      end).
-set (v := fun index => if h_uf_em (var index) then true else false);
+  as [uf h_incl].
+pose (h_uf_em p := Is_true_em (uf p) : p ∈ uf \/ p ∉ uf).
+set (v := fun index => uf (var index));
 exists v.
 assert (h_model : forall p : Proposition, Is_true (models' v p) <-> p ∈ uf).
 { induction p as [| |p1 h_i_p1 p2 h_i_p2]; [ unfold v .. | ]; simpl models'.
-  + apply bool_of_sumbool_spec.
-  + pose (h := proj1 h_max : ⊥ ∉ uf). simpl Is_true; intuition.
-  + (* rewrite Is_true_iff_eq_true in h_i_p, h_i_imp; *)
-    rewrite Is_true_implb.
+  + reflexivity.
+  + pose (Ultrafilter'_is_proper uf : ⊥ ∉ uf); simpl Is_true; intuition.
+  + rewrite Is_true_impl.
     (* Manually simulate `rewrite (imp_as_disj p1 p2)` because it doesn't work. *)
     transitivity (disj (¬p1) p2 ∈ uf); [|
       symmetry; apply (filter_respects_equiv uf), imp_as_disj ].
     replace (disj (¬p1) p2) with (join (B := LTA) (complement (B := LTA) p1) p2)
       by reflexivity;
-    rewrite (elem_impl_impl h_uf_wem h_max); simpl.
-    (* Check _ : Morphisms.Proper (Morphisms.respectful iff
-                                   (Morphisms.respectful iff iff))
-                               Basics.impl. *)
+    rewrite (elem_impl_impl h_uf_em (Ultrafilter_spec uf)); simpl.
     apply Morphisms_Prop.iff_iff_iff_impl_morphism; assumption. }
 assert (h_incl' : forall p, p ∈ Γ -> p ∈ uf).
 { intros ? h; apply h_incl, proves_iff; proof_assumption. }
