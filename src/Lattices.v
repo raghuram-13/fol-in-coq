@@ -54,6 +54,9 @@ conj (le_trans (equiv_le h1) (equiv_le h2))
 #[export] Instance equiv_equivalence : Equivalence equiv :=
 Build_Equivalence equiv (@equiv_refl) equiv_sym equiv_trans.
 
+#[export] Instance : subrelation equiv le := equiv_le.
+#[export] Instance : subrelation equiv (flip le) := equiv_ge.
+
 #[export] Instance le_respects_equiv : Proper (equiv ==> equiv ==> iff) X.(le) :=
 fun _ _ h_x _ _ h_y => conj
 (fun h_le_1 => le_trans (le_trans (equiv_ge h_x) h_le_1) (equiv_le h_y))
@@ -263,6 +266,10 @@ le_of_meet_bot_of_join_top h (join_compl_equiv_top p).
 Definition compl_le_of_join_top p q (h : p ∨ q ∼ ⊤) : ¬p ≤ q :=
 le_of_meet_bot_of_join_top (meet_compl_equiv_bot p) h.
 
+Definition compl_compl p : ¬¬p ∼ p := conj
+  (compl_le_of_join_top (equiv_trans (join_comm _ _) (join_compl_equiv_top p)))
+  (le_compl_of_meet_bot (equiv_trans (meet_comm _ _) (meet_compl_equiv_bot p))).
+
 End BasicResults.
 
 Section Filters.
@@ -274,6 +281,10 @@ Structure Filter := {
   filter_mono p q : p ≤ q -> p ∈ filterSet -> q ∈ filterSet;
   filter_meet_spec p q : p ∈ filterSet -> q ∈ filterSet -> p ∧ q ∈ filterSet;
 }.
+
+#[export] Instance : forall F : Filter,
+    Proper (A := unary_predicate B) (le ==> impl) F :=
+filter_mono.
 
 #[export] Instance filter_respects_equiv (F : Filter)
     : Proper (A := unary_predicate B) (equiv ==> iff) F := fun p q h =>
