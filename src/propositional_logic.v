@@ -1,9 +1,7 @@
 Set Implicit Arguments.
 
-Require Import SetNotations. Import (notations) Coq.Init.Logic.EqNotations.
-Require Lattices.
-Require Import Util.
-Require Coq.Bool.Bool.
+Require Import SetNotations Util. Require Lattices.
+Import (notations) EqNotations.
 
 (* Misc *)
 

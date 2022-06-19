@@ -1,4 +1,4 @@
-Require Coq.Program.Basics Coq.Bool.Bool.
+From Coq Require Program.Basics Bool.Bool.
 
 Section Logic. Implicit Types p q r : Prop.
 Import Coq.Program.Basics. Local Open Scope program_scope.
