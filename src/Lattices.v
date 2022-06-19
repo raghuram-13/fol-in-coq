@@ -408,11 +408,10 @@ Section Ultrafilters. Variable (F : Filter).
 Definition filter_maximal_proper :=
 filter_proper F /\ forall F', filter_proper F' -> F ⊆ F' -> F' ⊆ F.
 
-(* We use here lem in the form `forall p, p ∈ f \/ ¬p ∈ f`. *)
 Theorem filter_maximal_iff_mem_or_compl_mem (h_em : forall p, p ∈ F \/ p ∉ F)
     : filter_maximal_proper <-> filter_proper F /\ forall p, p ∈ F \/ ¬p ∈ F.
 (* Turns out (¬p ∈ F \/ p ∈ F) comes up naturally in the proof.
-   `setoid_rewrite` is apparently needed to rewrite under the `forall`. *)
+   `setoid_rewrite` is needed to rewrite under the `forall` to avoid funext. *)
 setoid_rewrite or_comm.
 (* Making use of `h_em`. *)
 assert (em__or_iff : forall p B, (p ∈ F \/ B) <-> (p ∉ F -> B)).
