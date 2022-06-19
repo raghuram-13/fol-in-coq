@@ -1,9 +1,8 @@
 Set Implicit Arguments. Unset Strict Implicit.
 
-Require Import Coq.Program.Basics.
-Require Import SetNotations.
+Require Coq.Program.Basics. Import Coq.Program.Basics (flip, impl).
 Require Import Coq.Classes.RelationClasses.
-Require Import Util.
+Require Import SetNotations Util.
 Import (notations) EqNotations.
 
 (* "Setoid handling" *)
