@@ -8,7 +8,7 @@ let rec rec h :=
     [> rec h1 | rec h2 ]
   else (* base of recursion *) match type of h with
     | _ = _ => induction h
-    | _ => destruct h as assumption_name
+    | _ => rename h into assumption_name
     end
 in
 let h := fresh "is_assumption" in intros variable_name h; rec h.
@@ -17,20 +17,15 @@ let h := fresh "is_assumption" in intros variable_name h; rec h.
    variable p and h of a type (Γ p). Simplifies occurrences of ⊔ and = in Γ,
    generating multiple subcases for the occurrences of ⊔.
 
-   Takes as arguments two optional names for what are called p and h above, with
-   priority given to h in case of one argument. The name for p must be an
-   identifier, but the name for h can be any or_and_intropattern (i.e. the
-   syntax for `destruct` patterns).
-   (NOTE: syntactically, any simple_intropattern (i.e. the syntax for `intros`
-   patterns) will be accepted, but in any case other than the = cases, will
-   cause an error. This is due to the behaviour of the `Tactic Notation`
-   command.) *)
+   Takes two optional arguments to name what are called p and h above, with
+   priority given to h in case of one argument. Both must be identifiers. *)
 Tactic Notation "intro_assumption" ident(variable_name)
-                                   simple_intropattern(assumption_name) :=
+                                   ident(assumption_name) :=
 intro_assumption variable_name assumption_name.
-Tactic Notation "intro_assumption" simple_intropattern(name) :=
+Tactic Notation "intro_assumption" ident(name) :=
 let var := fresh "assumption" in intro_assumption var name.
-Tactic Notation "intro_assumption" := intro_assumption ?.
+Tactic Notation "intro_assumption" :=
+let hyp := fresh "is_assumption" in intro_assumption hyp.
 
 Ltac detect_assumption hook := repeat (apply inl + apply inr); hook.
 
