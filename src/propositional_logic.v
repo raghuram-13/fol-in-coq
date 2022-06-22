@@ -1,6 +1,6 @@
 Set Implicit Arguments.
 
-Require Import SetNotations Util. Require Lattices.
+Require Import SetNotations Util Assumptions. Require Lattices.
 Import (notations) EqNotations.
 
 (* Misc *)
@@ -112,26 +112,11 @@ Coercion has_proof (assumptions : Proposition -> Type) p
 
 (* Tactics *)
 
-Ltac detect_assumption hook := repeat (apply inl + apply inr); hook.
-
 (* TODO consider forcing "solve or fail" behaviour using `solve`. *)
 Ltac proof_assumption hook := match goal with
 | |- [_ |- _] => apply has_proof; proof_assumption hook
-| |- _ |- _ => apply by_assumption; detect_assumption hook
+| |- _ |- _ => apply by_assumption; detect_assumption using only hook
 end.
-
-(* Constructs goals of the form (Γ p), simplifying occurrences of ⊔ and =
-   in Γ. A tactic `hook` can be passed to it to use after this in one of the
-   branches due to ⊔.
-   The default hook tries both `assumption` and `reflexivity`.
-   `detect_assumption using <hook>` will try the default as well as `hook`.
-   `detect_assumption using only <hook>` will try only `hook` in the branches.*)
-Tactic Notation "detect_assumption" "using" tactic3(hook) :=
-(detect_assumption ltac:(assumption + reflexivity + hook)).
-Tactic Notation "detect_assumption" "using" "only" tactic3(hook) :=
-(detect_assumption ltac:(hook)).
-Tactic Notation "detect_assumption" :=
-(detect_assumption ltac:(assumption + reflexivity)).
 
 (* Automates constructing proofs of statements by assumption, simplifying
    occurrences of ⊔ and =, taking a tactic `hook` to use in the branches (this
@@ -147,24 +132,6 @@ Tactic Notation "proof_assumption" "using" "only" tactic3(hook) :=
 (proof_assumption ltac:(hook)).
 Tactic Notation "proof_assumption" :=
 (proof_assumption ltac:(assumption + reflexivity)).
-
-(* Use instead of intro when introducing an assumption of the form (Γ p).
-   Simplifies occurrences of ⊔ and = in Γ, generating multiple subcases for the
-   occurrences of ⊔. *)
-Ltac intro_assumption :=
-let x := fresh "assumption" in
-(* We need h to refer to different hypotheses at different times. *)
-let rec rec h :=
-  let decompose_sum h1 h2 := match type of h with
-    | sum _ _ => destruct h as [h1|h2] end in
-  let h1 := fresh "is_assumption" in let h2 := fresh "is_assumption" in
-  tryif (decompose_sum h1 h2 + (simpl in h; decompose_sum h1 h2)) then
-    [> rec h1 | rec h2 ]
-  else (* after repeat *) match type of h with | _ = _ => induction h
-                              | _ => idtac end
-in
-let h := fresh "is_assumption" in
-intros x h; rec h.
 
 
 (* Misc *)
