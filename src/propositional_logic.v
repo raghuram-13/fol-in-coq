@@ -10,12 +10,12 @@ Ltac done := guard numgoals = 0.
 (* Limit scope of Variable declarations. They seem to be treated as some kind of
    axioms otherwise, whereas the intention is to parametrise future functions
    on them. *)
-Section Main. Variable VarIndex : Type.
+Section Main. Variable AtomicProposition : Type.
 
 
 (* The propositions studied. *)
 Inductive Proposition :=
-| var : VarIndex -> Proposition
+| atomic : AtomicProposition -> Proposition
 | falsum : Proposition
 | imp : Proposition -> Proposition -> Proposition.
 
@@ -30,11 +30,10 @@ Local Notation "¬ p" := (neg p) (at level 35, right associativity).
 
 (* Semantics *)
 
-(* TODO should this be `VarIndex -> Prop` instead? *)
-Definition valuation := VarIndex -> bool.
+Definition valuation := AtomicProposition -> bool.
 
 Fixpoint models' (v : valuation) (p : Proposition) : bool := match p with
-| var n => v n
+| atomic n => v n
 | ⊥ => false
 | p '-> q => implb (models' v p) (models' v q)
 end.
@@ -519,7 +518,7 @@ unfold consistent in h_consistent; rewrite (inconsistent_iff Γ) in h_consistent
 destruct (ultrafilter_lemma_em (Build_ProperFilter h_consistent))
   as [uf h_incl].
 pose (h_uf_em p := Is_true_em (uf p) : p ∈ uf \/ p ∉ uf).
-set (v := fun index => uf (var index));
+set (v := fun index => uf (atomic index));
 exists v.
 assert (h_model : forall p : Proposition, Is_true (models' v p) <-> p ∈ uf).
 { induction p as [| |p1 h_i_p1 p2 h_i_p2]; [ unfold v .. | ]; simpl models'.
