@@ -35,24 +35,14 @@ Section heterolist.
 
 Variables (Ind : Type) (motive : Ind -> Type).
 
-(* This caused a universe inconsistency error in the definition of Term (after
-   enabling universe polymorphism).
+(* Using a list of types caused a universe inconsistency error in the
+   definition of Term (_after_ enabling universe polymorphism).
    Using an indexed family was recommended at
    https://coq.discourse.group/t/constructing-heterogeneous-lists/1467/4
    and fixed the error. *)
-(* Inductive heterolist@{u} : list Type@{u} -> Type :=
-| heteronil : heterolist nil
-| heterocons {T : Type@{u}} {Ts} : T -> heterolist Ts -> heterolist (T :: Ts). *)
 Inductive heterolist : list Ind -> Type :=
 | heteronil : heterolist nil
 | heterocons {i is} : motive i -> heterolist is -> heterolist (i :: is).
-
-(* Fixpoint ref_by_occ {i is} (h : occ i is) (l : heterolist is) :=
-match h in occ _ is, l in heterolist is return motive i with
-| head _ _, @heterocons _ _ x _  => _
-| tail h  , @heterocons _ _ _ xs => _
-| head _ _, heteronil | tail _, heteronil => ID
-end. *)
 
 (* It is easier to do this than to write these matches inline due to
    the spurious new copies of bindings for i and is Coq introduces and
@@ -141,12 +131,6 @@ Inductive Term (type_context : list types) | (type : types) :=
 
 Definition ClosedTerm := Term nil.
 
-(* This definition would account for everything except quantification. *)
-(* Require propositional_logic.
-Definition Formula (context : list types) :=
-propositional_logic.Proposition {arg_types & predicates arg_types
-                                           & heterolist (Term context) arg_types}. *)
-
 (* Note: this has unnecessary repetition in that it repeats the
     operations of propositional logic and this might force us to redo
     things we did for propositional logic.
@@ -220,15 +204,6 @@ Fixpoint value [type] (term : Term type_context type)
                   | term :: rest => value term :: map_value rest
                   end) _ args)
 end.
-(* This runs into the problem of having a heterolist with elements of the right
-   types and with the right elements, but with the wrong indices for the types of
-   the elements. *)
-(* Fixpoint value_ (t : sigT (Term type_context)) {struct t}
-  : m.(modelType) (projT1 t) := match t as t return m.(modelType) (projT1 t) with
-| existT _ type (var occ)    => ref_by_occ occ context
-| existT _ type (app f args) => vararg_apply (m.(modelFun) f)
-                  (map_hetero value_ (homogenize args))
-end. *)
 End value.
 
 (* Can't use type_context, context section variables because context has to
@@ -263,11 +238,6 @@ Inductive functions : list types -> types -> Set :=
 Inductive relations : list types -> Set :=
 | int_eq : relations (Nat :: Nat :: nil).
 
-(* Check neg (atomic (existT2 relations (heterolist (Term functions nil)) _
-                      int_eq
-                      [ app succ [app succ [app zero []]]
-                      ; app succ [app zero []]]))
-    : Sentence functions relations. *)
 Let mysentence := univ (type := Nat)
                     (impl (predApp int_eq [var (head _ _); app zero []])
                       (impl (predApp int_eq [var (head _ _); app succ [app zero []]])
