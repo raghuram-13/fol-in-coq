@@ -194,11 +194,11 @@ Structure Model := {
     : predicates arg_types -> vararg_predicate modelType arg_types
 }.
 
-Section local. #[local] Unset Implicit Arguments.
-Context (m : Model).
+Section local. #[local] Unset Implicit Arguments. Context (m : Model).
 
-Fixpoint value [type_context] (context : heterolist m.(modelType) type_context)
-               [type] (term : Term type_context type)
+Section value.
+Context [type_context] (context : heterolist m.(modelType) type_context).
+Fixpoint value [type] (term : Term type_context type)
   : m.(modelType) type := match term with
 | var occ    => ref_by_occ occ context
 | app f args => vararg_apply (m.(modelFun) f)
@@ -217,7 +217,7 @@ Fixpoint value [type_context] (context : heterolist m.(modelType) type_context)
                   ((fix map_value [is] (l : heterolist (Term type_context) is)
                     : heterolist m.(modelType) is := match l with
                   | []           => []
-                  | term :: rest => value context term :: map_value rest
+                  | term :: rest => value term :: map_value rest
                   end) _ args)
 end.
 (* This runs into the problem of having a heterolist with elements of the right
@@ -229,7 +229,10 @@ end.
 | existT _ type (app f args) => vararg_apply (m.(modelFun) f)
                   (map_hetero value_ (homogenize args))
 end. *)
+End value.
 
+(* Can't use type_context, context section variables because context has to
+   vary in the recursive calls. *)
 Fixpoint interpret [type_context] (context : heterolist m.(modelType) type_context)
                    (φ : Formula type_context) : Prop := match φ with
 | predApp r args => vararg_apply (m.(modelPred) r) (heteromap (value context) args)
@@ -244,6 +247,8 @@ End local.
 End Main.
 #[global] Arguments var {_ _ _ _}.
 #[global] Arguments false {_ _ _ _}.
+#[global] Arguments value {types functions predicates} m [type_context] context [type] term.
+#[global] Arguments interpret {types functions predicates} m [type_context] context φ.
 
 (* Test example *)
 
@@ -263,8 +268,22 @@ Inductive relations : list types -> Set :=
                       [ app succ [app succ [app zero []]]
                       ; app succ [app zero []]]))
     : Sentence functions relations. *)
-Check univ (type := Nat) (impl (predApp int_eq [var (head _ _); app zero []])
-                         (impl (predApp int_eq [var (head _ _); app succ [app zero []]])
-                             false)) : Sentence functions relations.
+Let mysentence := univ (type := Nat)
+                    (impl (predApp int_eq [var (head _ _); app zero []])
+                      (impl (predApp int_eq [var (head _ _); app succ [app zero []]])
+                        false)) : Sentence functions relations.
+
+Definition standard_model : Model functions relations := {|
+  modelType x    := nat (* match x with | Nat => nat end *);
+  modelFun _ _ f := match f in functions l _ return vararg_function _ l nat with
+    | zero => 0
+    | succ => S
+    end;
+  modelPred _ r := match r in relations l return vararg_function _ l Prop with
+    | int_eq => @eq nat
+    end
+|}.
+
+Eval compute in interpret standard_model [] mysentence.
 
 End Example.
