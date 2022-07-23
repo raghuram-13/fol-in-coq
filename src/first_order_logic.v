@@ -1,118 +1,9 @@
 Set Implicit Arguments. Unset Strict Implicit. Set Maximal Implicit Insertion.
+
 From Coq Require Lists.List.
+Require Import Util. Import (notations) Util.HeterolistNotations.
 
-Section Util.
-
-Definition dep_uncurry {A : Type} {motive : A -> Type}
-                       {motive' : forall a, motive a -> Type}
-    (f : forall a (b : motive a), motive' a b)
-  : let motive' : sigT motive -> Type :=
-      fun '(existT _ a b : sigT motive) => motive' a b in
-    forall x : sigT motive, motive' x :=
-fun '(existT _ a b) => f a b.
-
-Definition dep_curry {A : Type} {motive : A -> Type}
-                     {motive' : sigT motive -> Type}
-    (f : forall x : sigT motive, motive' x)
-  a (b : motive a) : motive' (existT _ a b) := f (existT _ a b).
-
-Section occurrence.
-Import (notations) List.ListNotations. Open Scope list.
-
-Inductive occ {A : Type} | (a : A) : list A -> Type :=
-| head rest : occ a (a :: rest)
-| tail rest b : occ a rest -> occ a (b :: rest).
-#[global] Arguments tail {_ _ _} [b].
-
-Definition no_occ_nil {A : Type} (a : A) (h : occ a []) : False :=
-(* `in` enables match to eliminate constructors whose type doesn't match
-   the index. I think. *)
-match h in occ _ [] with end.
-
-End occurrence.
-
-Section heterolist.
-
-Variables (Ind : Type) (motive : Ind -> Type).
-
-(* Using a list of types caused a universe inconsistency error in the
-   definition of Term (_after_ enabling universe polymorphism).
-   Using an indexed family was recommended at
-   https://coq.discourse.group/t/constructing-heterogeneous-lists/1467/4
-   and fixed the error. *)
-Inductive heterolist : list Ind -> Type :=
-| heteronil : heterolist nil
-| heterocons {i is} : motive i -> heterolist is -> heterolist (i :: is).
-
-(* It is easier to do this than to write these matches inline due to
-   the spurious new copies of bindings for i and is Coq introduces and
-   then complains about. *)
-Definition heterofirst {i is} : heterolist (i::is) -> motive i :=
-fun '(heterocons x _) => x.
-Definition heterorest {i is} : heterolist (i::is) -> heterolist is :=
-fun '(heterocons _ rest) => rest.
-
-Fixpoint ref_by_occ {i is} (h : occ i is) : heterolist is -> motive i :=
-match h with
-| head _ _ => heterofirst
-| tail h   => fun l => ref_by_occ h (heterorest l)
-end.
-
-Fixpoint homogenize {is} (l : heterolist is)
-  : list (sigT motive) := match l with
-| heteronil       => nil
-| heterocons x xs => cons (existT _ _ x) (homogenize xs)
-end.
-
-Section vararg.
-
-Fixpoint vararg_function (arg_types : list Ind) (B : Type) : Type :=
-match arg_types with
-| nil         => B
-| cons i rest => motive i -> vararg_function rest B
-end.
-
-Definition vararg_predicate (arg_types : list Ind) :=
-vararg_function arg_types Prop.
-
-Fixpoint vararg_apply {arg_types : list Ind} {B : Type}
-                      (f : vararg_function arg_types B)
-                      (args : heterolist arg_types) : B :=
-(* We need f effectively unapplied so its type changes with `args`. *)
-(match args in heterolist arg_types return vararg_function arg_types B -> B with
-| heteronil           => id
-| heterocons arg rest => fun f => vararg_apply (f arg) rest
-end) f.
-
-End vararg.
-
-Fixpoint map_hetero (f : forall i, motive i) is : heterolist is := match is with
-| nil       => heteronil
-| cons i is => heterocons (f i) (map_hetero f is)
-end.
-
-End heterolist.
-#[global] Arguments heteronil {_ motive}.
-
-Fixpoint heteromap {Ind : Type} {motive1 motive2 : Ind -> Type}
-                   (f : forall [i : Ind], motive1 i -> motive2 i)
-  {is : list Ind} (l : heterolist motive1 is) : heterolist motive2 is :=
-match l with
-| heteronil         => heteronil
-| heterocons a rest => heterocons (f a) (heteromap f rest)
-end.
-
-End Util.
-(* Has to be done outside any sections *)
-Declare Scope heterolist.
-Bind Scope heterolist with heterolist. Delimit Scope heterolist with heterolist.
-#[local] Open Scope heterolist.
-Notation "[ ]" := heteronil : heterolist.
-Infix "::" := heterocons : heterolist.
-Notation "[ x ; .. ; y ]" := (x :: .. (y :: heteronil)..) : heterolist.
-
-
-Section Main.
+Section Syntax.
 
 (* The signature of a particular FOL. *)
 
@@ -126,8 +17,6 @@ Inductive Term (type_context : list types) | (type : types) :=
 | var (_ : occ type type_context)
 | app {arg_types} (function : functions arg_types type)
                   (args : heterolist Term arg_types).
-#[global] Arguments var {type_context type}.
-#[global] Arguments app {type_context type arg_types}.
 
 Definition ClosedTerm := Term nil.
 
@@ -137,38 +26,64 @@ Definition ClosedTerm := Term nil.
    Possible fix: rewrite propositional_logic to not assume free
     propositional language on a set of variables, and have the free
     case as an instance? *)
-Inductive Formula | (context : list types) :=
+Inductive Formula | (type_context : list types) :=
 | predApp {arg_types} (predicate : predicates arg_types)
-                      (args : heterolist (Term context) arg_types)
-| false | impl : Formula context -> Formula context -> Formula context
-| univ {type : types} : Formula (type :: context) -> Formula context.
-#[global] Arguments false {context}.
-
-Declare Scope first_order_formula.
-Bind Scope first_order_formula with Formula.
-Delimit Scope first_order_formula with fol_formula.
-
-#[local] Notation "⊥" := false : first_order_formula.
-#[local] Infix "'->" := impl (at level 60, right associativity) : first_order_formula.
-
-Definition neg {context} (φ : Formula context) : Formula context :=
-impl φ false.
-#[local] Notation "¬ φ" := (neg φ) (at level 35, right associativity) : first_order_formula.
-
-Definition exist {context type} (φ : Formula (type::context)) : Formula context :=
-neg (univ (neg φ)).
-#[local] Notation "∀. φ" := (univ φ) (at level 95, right associativity).
-#[local] Notation "∃. φ" := (exist φ) (at level 95, right associativity).
-
-(* Example: given a predicate symbol φ with one argument of type t,
-   the formula `∃ x, ¬(φ x)`. *)
-(* Check fun t φ => ∃.¬(predApp φ [var (head t nil)]). *)
+                      (args : heterolist (Term type_context) arg_types)
+| false
+| impl : Formula type_context -> Formula type_context -> Formula type_context
+| univ {type} : Formula (type :: type_context) -> Formula type_context.
+#[global] Arguments false {type_context}.
 
 Definition Sentence := Formula nil.
 
+(* Derived operations. *)
+(* Mainly defined to use for the notations. *)
+Definition neg {type_context} (φ : Formula type_context)
+  : Formula type_context :=
+impl φ false.
+
+Definition exist {type_context type} (φ : Formula (type::type_context))
+  : Formula type_context :=
+neg (univ (neg φ)).
+
+Section Substitution.
+Context {type_context : list types} {type : types}
+        (variable : occ type type_context) (value : Term type_context type).
+
+Fixpoint term_subst [type'] (term : Term type_context type')
+  : Term (remove_occ variable) type' := match term with
+| var o      => _
+| app f args => app f (heteromap term_subst args)
+end.
+
+End Syntax.
+#[global] Arguments var {types functions type_context type}.
+#[global] Arguments false {types functions predicates type_context}.
+
+Module FOLFormulaNotations.
+  Declare Scope first_order_formula.
+  Bind Scope first_order_formula with Formula.
+  Delimit Scope first_order_formula with fol_formula.
+  Open Scope first_order_formula.
+
+  Notation "⊥" := false : first_order_formula.
+  Infix "'->" := impl (at level 60, right associativity) : first_order_formula.
+
+  Notation "¬ φ" := (neg φ) (at level 35, right associativity) : first_order_formula.
+
+  Notation "∀. φ" := (univ φ) (at level 95, right associativity).
+  Notation "∃. φ" := (exist φ) (at level 95, right associativity).
+
+  (* Example: given a predicate symbol φ with one argument of type t,
+     the formula `∃ x, ¬(φ x)`. *)
+  (* Check fun t φ => ∃.¬(predApp φ [var (occ_head t nil)]). *)
+End FOLFormulaNotations.
 
 
-(* Semantics *)
+Section Semantics.
+Variables (types : Type) (functions : list types -> types -> Type)
+                         (predicates : list types -> Type).
+
 Structure Model := {
   modelType : types -> Type;
   modelFun {arg_types : list types} {res_type : types}
@@ -178,52 +93,69 @@ Structure Model := {
     : predicates arg_types -> vararg_predicate modelType arg_types
 }.
 
-Section local. #[local] Unset Implicit Arguments. Context (m : Model).
+Section Interpretation.
+Set Strict Implicit. Context (m : Model).
 
 Section value.
 Context [type_context] (context : heterolist m.(modelType) type_context).
-Fixpoint value [type] (term : Term type_context type)
+Fixpoint value [type] (term : Term functions type_context type)
   : m.(modelType) type := match term with
 | var occ    => ref_by_occ occ context
-| app f args => vararg_apply (m.(modelFun) f)
-                  (* This runs into the problem that `value` is passed
-                     to `heteromap` unapplied to two arguments, rather
-                     than just the decreasing argument `term`.
+| app f args =>
+  vararg_apply (m.(modelFun) f)
+    (* This runs into the problem that `value` is passed
+       to `heteromap` unapplied to two arguments, rather
+       than just the decreasing argument `term`.
 
-                     Ideally we want the Fixpoint declaration to be
-                     interpreted as
-                     "term decreases and type changes arbitrarily", but
-                     it seems it is perhaps interpreted as
-                     "term decreases and type remains the same"
-                     instead. `type` is literally just an index for the
-                     type of term; this shouldn't be a problem at all. *)
-                  (* (heteromap value args) *)
-                  ((fix map_value [is] (l : heterolist (Term type_context) is)
-                    : heterolist m.(modelType) is := match l with
-                  | []           => []
-                  | term :: rest => value term :: map_value rest
-                  end) _ args)
+       Ideally we want the Fixpoint declaration to be
+       interpreted as
+       "term decreases and type changes arbitrarily", but
+       it seems it is perhaps interpreted as
+       "term decreases and type remains the same"
+       instead. `type` is literally just an index for the
+       type of term; this shouldn't be a problem at all. *)
+    (* (heteromap value args) *)
+    ((fix map_value [is] (l : heterolist (Term functions type_context) is)
+      : heterolist m.(modelType) is := match l with
+    | []           => []
+    | term :: rest => value term :: map_value rest
+    end) _ args)
 end.
 End value.
 
 (* Can't use type_context, context section variables because context has to
    vary in the recursive calls. *)
-Fixpoint interpret [type_context] (context : heterolist m.(modelType) type_context)
-                   (φ : Formula type_context) : Prop := match φ with
-| predApp r args => vararg_apply (m.(modelPred) r) (heteromap (value context) args)
-| false          => False
-| impl p q       => interpret context p -> interpret context q
-| @univ _ type φ => forall x : m.(modelType) type, interpret (x :: context) φ
+Fixpoint interpret
+    [type_context] (context : heterolist m.(modelType) type_context)
+  (φ : Formula functions predicates type_context) : Prop := match φ with
+| predApp r args       => vararg_apply (m.(modelPred) r)
+                            (heteromap (value context) args)
+| false                => False
+| impl p q             => interpret context p -> interpret context q
+| @univ _ _ _ _ type φ =>
+  forall x : m.(modelType) type, interpret (x :: context) φ
 end.
 
-End local.
+End Interpretation.
+End Semantics.
 
+Section Proofs.
+Context {types : Type} {functions : list types -> types -> Type}
+                       {predicates : list types -> Type}.
 
-End Main.
-#[global] Arguments var {_ _ _ _}.
-#[global] Arguments false {_ _ _ _}.
-#[global] Arguments value {types functions predicates} m [type_context] context [type] term.
-#[global] Arguments interpret {types functions predicates} m [type_context] context φ.
+Section defs.
+
+#[local] Notation "'Assumptions'" :=
+(forall type_context, Formula functions predicates type_context -> Type)
+    (only parsing).
+
+Implicit Types assumptions Γ : Assumptions.
+
+Inductive Proof .
+
+End defs.
+
+End Proofs.
 
 (* Test example *)
 
@@ -239,8 +171,8 @@ Inductive relations : list types -> Set :=
 | int_eq : relations (Nat :: Nat :: nil).
 
 Let mysentence := univ (type := Nat)
-                    (impl (predApp int_eq [var (head _ _); app zero []])
-                      (impl (predApp int_eq [var (head _ _); app succ [app zero []]])
+                    (impl (predApp int_eq [var (occ_head _ _); app zero []])
+                      (impl (predApp int_eq [var (occ_head _ _); app succ [app zero []]])
                         false)) : Sentence functions relations.
 
 Definition standard_model : Model functions relations := {|
