@@ -35,114 +35,142 @@ End Is_true.
 
 
 
-(* Bounded natural numbers, for contexts, array indices, etc. *)
+(* Bounded natural numbers. *)
 Inductive BNat : nat -> Set :=
 | BNat_zero {n} : BNat (S n)
 | BNat_succ {n} : BNat n -> BNat (S n).
 
-Module BNat.
-Implicit Types (m n : nat).
+Lemma no_bnat_zero : BNat 0 -> False. exact (fun a => match a with end). Qed.
 
-(* Map from `BNat n` to `BNat (S n)` preserving number of `BNat`s after. *)
-Definition toSucc_a {n} := BNat_succ (n := n).
-(* Map from `BNat n` to `BNat (S n)` preserving number of `BNat`s before. *)
-Fixpoint toSucc_b {n} (a : BNat n) : BNat (S n) := match a with
-| BNat_zero => BNat_zero
-| BNat_succ a => BNat_succ (toSucc_b a)
+(* Occurrences of an element in a list. *)
+Inductive Occ {A : Type} : A -> list A -> Type :=
+| Occ_head {a rest} : Occ a (cons a rest)
+| Occ_tail {a rest b} : Occ a rest -> Occ a (cons b rest).
+
+Module Occ.
+Section ForVariables. Context {A : Type}. Implicit Types (a : A) (l : list A).
+Import (notations) List.ListNotations. #[local] Open Scope list.
+
+Fixpoint addBefore l1 {a l2} : Occ a l2 -> Occ a (l1 ++ l2) := match l1 with
+| []        => id
+| a :: rest => Occ_tail ∘ addBefore rest
 end.
 
-
-(* Map from `BNat n` to `BNat (m + n)` preserving number of `BNat`s after. *)
-(* This adds `m` applications of `BNat_succ` without changing the type of
-   the `BNat_zero`. *)
-Fixpoint toSum_a m {n} : BNat n -> BNat (m + n) := match m with
-| 0   => id
-| S m => toSucc_a ∘ toSum_a m
+Fixpoint addAfter l1 {a l2} (occ : Occ a l2) : Occ a (l2 ++ l1) := match occ with
+| Occ_head     => Occ_head
+| Occ_tail occ => Occ_tail (addAfter l1 occ)
 end.
 
-(* Map from `BNat n` to `BNat (m + n)` preserving number of `BNat`s before. *)
-Fixpoint toSum_b m {n} : BNat n -> BNat (m + n) :=
-(* eq_subst (P := BNat) (add_comm n m) ∘ toSum_b' m *)
-match m return BNat n -> BNat (m + n) with
-| 0   => id
-| S m => toSucc_b ∘ toSum_b m
+Fixpoint toBNat {a l} (occ : Occ a l) : BNat (List.length l) := match occ with
+| Occ_head     => BNat_zero
+| Occ_tail occ => BNat_succ (toBNat occ)
 end.
 
-(* Map from `BNat n` to `BNat (n + m)` preserving number of `BNat`s before. *)
-(* This effectively just adds `m` to the type of the BNat_zero inside. *)
-Fixpoint toSum_b' m {n} (a : BNat n) : BNat (n + m) :=
-match a in BNat n return BNat (n + m) with
-| BNat_zero => BNat_zero
-| BNat_succ a => BNat_succ (toSum_b' m a)
+Definition fromBNat {l} : BNat (List.length l) -> {a & Occ a l}.
+refine (let _fromBNat := _ : forall n (a : BNat n) l,
+                               List.length l = n -> {a & Occ a l}
+        in fun b => _fromBNat _ b _ eq_refl).
+induction 1 as [|? b h_i]
+; (intros [|a rest] h;
+  simpl in h; [ discriminate h | injection h as h ]); [
+  econstructor; exact Occ_head
+| refine (let (a, h) := h_i rest h in _); econstructor; exact (Occ_tail h)
+].
+Qed.
+
+End ForVariables.
+End Occ.
+
+
+
+(* Heterogenous lists. *)
+Inductive Heterolist {A : Type} {motive : A -> Type} : list A -> Type :=
+| heteronil : Heterolist nil
+| heterocons {a rest} : motive a -> Heterolist rest -> Heterolist (cons a rest).
+#[global] Arguments Heterolist {A} motive _.
+
+Module Heterolist.
+
+Module Notation.
+  Declare Scope heterolist. Bind Scope heterolist with Heterolist.
+  Delimit Scope heterolist with heterolist. Open Scope heterolist.
+
+  Notation "[ ]" := heteronil : heterolist.
+  Infix "::" := heterocons : heterolist.
+  Notation "[ x ; .. ; y ]" := (x :: .. (y :: heteronil)..) : heterolist.
+End Notation.
+Import (notations) Notation.
+
+Section ForVariables.
+Context {A : Type}. Implicit Type motive : A -> Type. Context {motive}.
+
+Definition first {a l} : Heterolist motive (a :: l) -> motive a :=
+fun '(a :: _) => a.
+Definition rest {a l} : Heterolist motive (a :: l) -> Heterolist motive l :=
+fun '(_ :: l) => l.
+
+Fixpoint ref {a l} (occ : Occ a l) : Heterolist motive l -> motive a :=
+match occ with
+| Occ_head     => first
+| Occ_tail occ => ref occ ∘ rest
 end.
 
-End BNat.
-
-
-
-(* Arrays - lists of given length *)
-Inductive Array {A : Type} : nat -> Type :=
-| Array_nil : Array 0
-| Array_cons {n} : A -> Array n -> Array (S n).
-#[global] Arguments Array (A) : clear implicits.
-
-Module Array.
-Section ForVariables. Context {A : Type}.
-
-#[local] Notation "[ ]" := Array_nil.
-#[local] Infix "::" := Array_cons (at level 60, right associativity).
-
-(* As usual, Coq's pathetic pattern matching has forced me to define
-   this unnecessarily. *)
-Definition first {n} : Array A (S n) -> A := fun '(a :: _) => a.
-Definition rest {n} : Array A (S n) -> Array A n := fun '(_ :: arr) => arr.
-
-Fixpoint ref {n} (a : BNat n) : Array A n -> A :=
-match a with
-| BNat_zero   => first
-| BNat_succ a => ref a ∘ rest
+(* Let's see how well this works. *)
+(* Problem: `List.map id l` and `l` are not definitionally equal.
+   Hence we define a `map` below for when `B` is `A` and `f` is `id`. *)
+Fixpoint map' {A : Type} {motive1 : A -> Type} {B : Type} {motive2 : B -> Type}
+             [f : A -> B] (f' : forall [a], motive1 a -> motive2 (f a))
+  {l'} (l : Heterolist motive1 l') : Heterolist motive2 (List.map f l') :=
+match l with
+| []        => []
+| a :: rest => f' a :: map' f' rest
 end.
 
-Fixpoint map {A B} (f : A -> B) {n} (arr : Array A n) : Array B n := match arr with
-| [] => Array_nil
+Fixpoint map {motive1 motive2} (f : forall [a], motive1 a -> motive2 a)
+  {l'} (l : Heterolist motive1 l') : Heterolist motive2 l' := match l with
+(* `List.map id` is not _definitionally_ `id`, and don't want to rewrite. *)
+(* map' f l' *)
+| []        => []
 | a :: rest => f a :: map f rest
 end.
 
+Check map' (*motive1 := fun _ => nat*) (motive2 := id)
+            (fun _ (b : nat) => b).
+
 End ForVariables.
-
-Module Notation.
-  Declare Scope array. Bind Scope array with Array.
-  Delimit Scope array with array. Open Scope array.
-
-  Notation "[ ]" := Array_nil : array.
-  Infix "::" := Array_cons : array.
-  Notation "[ x ; .. ; y ]" := (x :: .. (y :: Array_nil)..) : array.
-End Notation.
-
-End Array.
+End Heterolist.
 
 
 
 Section Functions.
 
-Section Vararg.
+Section Vararg. Context {A : Type} (motive : A -> Type).
 
-Fixpoint vararg_function (n : nat) (A B : Type) : Type :=
-match n with
-| 0   => B
-| S n => A -> vararg_function n A B
+Fixpoint vararg_function (l : list A) (B : Type) : Type :=
+match l with
+| nil         => B
+| cons a rest => motive a -> vararg_function rest B
 end.
 
-Definition vararg_predicate (n : nat) (A : Type) :=
-vararg_function n A Prop.
+Definition vararg_predicate (l : list A) :=
+vararg_function l Prop.
 
-Fixpoint vararg_apply {n A B} (f : vararg_function n A B) (args : Array A n) : B :=
+Fixpoint vararg_apply {l B} (f : vararg_function l B)
+                            (args : Heterolist motive l) : B :=
 (* We need f effectively unapplied so its type changes with `args`. *)
-match args in Array _ n return vararg_function n A B -> B with
-| Array_nil           => id
-| Array_cons arg rest => fun f => vararg_apply (f arg) rest
+match args in Heterolist _ l return vararg_function l B -> B with
+| heteronil           => id
+| heterocons arg rest => fun f => vararg_apply (f arg) rest
 end f.
 
+Fixpoint vararg_curry {l B} : (Heterolist motive l -> B) -> vararg_function l B :=
+match l with
+| nil         => fun f => f heteronil
+| cons a rest => fun f arg => vararg_curry (fun rest => f (heterocons arg rest))
+end.
+
 End Vararg.
+#[global] Arguments vararg_apply {_ motive _ _}.
+#[global] Arguments vararg_curry {_ motive _ _}.
 
 End Functions.
