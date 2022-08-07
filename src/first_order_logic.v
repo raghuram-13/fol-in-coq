@@ -8,7 +8,7 @@ Require Import Util. Import (notations) Util.Heterolist.Notation.
 
 Section ForVariables.
 (* The signature of a particular FOL.
-  (We are building many-sorted FOL.) *)
+   (We are building many-sorted FOL.) *)
 Variable (types : Type) (functions : list types -> types -> Type)
                         (predicates : list types -> Type).
 
@@ -50,11 +50,11 @@ Fixpoint Term_rect' {context} {P : types -> Type}
 end.
 
 (* Note: this has unnecessary repetition in that it repeats the
-    operations of propositional logic and this might force us to redo
-    things we did for propositional logic.
+   operations of propositional logic and this might force us to redo
+   things we did for propositional logic.
    Possible fix: rewrite propositional_logic to not assume free
-    propositional language on a set of variables, and have the free
-    case as an instance? *)
+   propositional language on a set of variables, and have the free
+   case as an instance? *)
 Inductive Formula | context :=
 | predApp' {arity} (predicate : predicates arity)
                    (args : Heterolist (Term context) arity)
@@ -71,13 +71,13 @@ Definition Sentence := Formula nil.
 
 (* Derived operations. *)
 (* Mainly defined to use for the notations. *)
-Definition neg {context} (φ : Formula context)
+Definition neg {context} (formula : Formula context)
   : Formula context :=
-impl φ contradiction.
+impl formula contradiction.
 
-Definition exist {type context} (φ : Formula (type :: context))
+Definition exist {type context} (formula : Formula (type :: context))
   : Formula context :=
-neg (univ (neg φ)).
+neg (univ (neg formula)).
 
 Section Substitution.
 
@@ -210,9 +210,12 @@ Module FOLFormulaNotations.
   Notation "∀. φ" := (univ φ) (at level 95, right associativity).
   Notation "∃. φ" := (exist φ) (at level 95, right associativity).
 
-  (* Example: given a predicate symbol φ with one argument of type t,
-     the formula `∃ x, ¬(φ x)`. *)
-  (* Check fun t φ => ∃.¬(predApp φ [var (* (occ_head t nil) *) BNat_zero]). *)
+  (* Example: given a predicate symbol `formula` with one argument, the
+     formula `∃ x, ¬(formula x)`. *)
+  Check fun formula => ∃.¬predApp' formula [var' Occ_head].
+  (* or more generally, given a formula with one free variable, applying
+     it by substitution instead. *)
+  Check fun formula => ∃.¬formula_subst [var' Occ_head] formula.
 End FOLFormulaNotations.
 
 
