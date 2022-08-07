@@ -1,8 +1,10 @@
 Set Implicit Arguments. Unset Strict Implicit. Set Maximal Implicit Insertion.
 
-From Coq Require Program.Basics.
-Import (notations) Coq.Program.Basics. Open Scope program_scope.
+From Coq Require Program.Basics Lists.List.
+Import (notations) Coq.Program.Basics. #[local] Open Scope program_scope.
+Import (notations) Coq.Lists.List.ListNotations.
 Require Import Util. Import (notations) Util.Heterolist.Notation.
+#[local] Open Scope heterolist. (* for `match` patterns *)
 
 Section ForVariables.
 (* The signature of a particular FOL.
@@ -56,10 +58,10 @@ end.
 Inductive Formula | context :=
 | predApp' {arity} (predicate : predicates arity)
                    (args : Heterolist (Term context) arity)
-| false
+| contradiction
 | impl : Formula context -> Formula context -> Formula context
 | univ {type} : Formula (type :: context) -> Formula context.
-#[global] Arguments false {context}.
+#[global] Arguments contradiction {context}.
 
 Definition predApp {context arity} : forall predicate : predicates arity,
   vararg_function (Term context) arity (Formula context) :=
@@ -71,7 +73,7 @@ Definition Sentence := Formula nil.
 (* Mainly defined to use for the notations. *)
 Definition neg {context} (φ : Formula context)
   : Formula context :=
-impl φ false.
+impl φ contradiction.
 
 Definition exist {type context} (φ : Formula (type :: context))
   : Formula context :=
@@ -79,13 +81,30 @@ neg (univ (neg φ)).
 
 Section Substitution.
 
+(* A list of values for the `context'` which must be valid in `context`. *)
+Definition Substitutions context context' := Heterolist (Term context') context.
+
 Definition addContext extraContext {context}
   [type] : Term context type -> Term (extraContext ++ context) type :=
 Term_rect' (fun _ occ => var' (Occ.addBefore extraContext occ))
            (fun _ _ f _ args' => app' f args').
 
-(* A list of values for the `context'` which must be valid in `context`. *)
-Definition Substitutions context context' := Heterolist (Term context') context.
+(* Constructing `Value`s to use in substitutions. *)
+Definition value_id {context} : Substitutions context context :=
+Heterolist.mapList context (fun _ o => var' o).
+
+(* TODO generalise this to adding multiple types like addContext? *)
+(* Transforms a substitution to an equivalent one in a context with one
+   more variable of type `type`.
+   This is achieved by incrementing the de Bruijn indexes of the terms
+   to substitute (achieved by `Heterolist.map (addContext _)`) and
+   adding an identity substitution at the front (achieved by
+   `var' Occ_head ::`). *)
+Definition add1ContextToSubst {type context context'}
+  (values : Substitutions context context')
+  : Substitutions (type :: context) (type :: context') :=
+var' Occ_head :: Heterolist.map (addContext [type]) values.
+
 
 Section TermSubst.
 Context {context context'} (values : Substitutions context context').
@@ -104,30 +123,16 @@ End TermSubst.
    _Formalized First-Order Logic_ by Andreas Halkjær (Section 5.1.2)
    and other sources.
    Recursion except through quantifiers (or anything that changes the
-    context) is straightforward, and for moving under a quantifier we
-    increment the de Bruijn indexes (achieved by `Heterolist.map (addContext _)`) and
-    add an identity substitution at the front (achieved by
-    `var' Occ_head ::`). *)
+   context) is straightforward, and for moving under a quantifier we
+   use add1ContextToSubst. *)
 Fixpoint formula_subst {context context'} (values : Substitutions context context')
                        (formula : Formula context) : Formula context' :=
 match formula with
 | predApp' r args => predApp' r (Heterolist.map (term_subst values) args)
-| false           => false
+| contradiction   => contradiction
 | impl p q        => impl (formula_subst values p) (formula_subst values q)
-| @univ _ type formula =>
-  univ (formula_subst
-             (var' Occ_head :: Heterolist.map (addContext (type :: nil)) values)
-             formula)
+| @univ _ type formula => univ (formula_subst (add1ContextToSubst values) formula)
 end.
-
-(* Constructing `Value`s to use in substitutions. *)
-Definition value_id {context} : Substitutions context context :=
-Heterolist.mapList context (fun _ o => var' o).
-
-(* We perhaps don't need this: it's just heterocons, after all. *)
-(* Definition subst_head {type context context'} (values : Substitutions context context')
-                      (new_value : Term context' type)
-  : Substitutions (type :: context) context' := new_value :: values. *)
 
 End Substitution.
 
@@ -157,7 +162,7 @@ Fixpoint interpret {context} (values : Heterolist m.(modelType) context)
   (formula : Formula context) : Prop := match formula with
 | predApp' r args      => vararg_apply (m.(modelPred) r)
                             (Heterolist.map (value values) args)
-| false                => False
+| contradiction        => False
 | impl p q             => interpret values p -> interpret values q
 | @univ _ type formula => forall x : m.(modelType) type,
                             interpret (x :: values) formula
@@ -185,7 +190,10 @@ End Proofs.
 End ForVariables.
 #[global] Arguments var' {types functions context type}.
 #[global] Arguments var {types functions context}.
-#[global] Arguments false {types functions predicates context}.
+#[global] Arguments contradiction {types functions predicates context}.
+(* TODO reconsider this. functions actually can't be implicitly inferred
+   except from the expected type, which may not be very reliable. *)
+#[global] Arguments predApp {types functions predicates context arity}.
 
 
 Module FOLFormulaNotations.
@@ -194,7 +202,7 @@ Module FOLFormulaNotations.
   Delimit Scope first_order_formula with fol_formula.
   Open Scope first_order_formula.
 
-  Notation "⊥" := false : first_order_formula.
+  Notation "⊥" := contradiction : first_order_formula.
   Infix "'->" := impl (at level 60, right associativity) : first_order_formula.
 
   Notation "¬ φ" := (neg φ) (at level 35, right associativity) : first_order_formula.
@@ -214,30 +222,64 @@ Section Example.
 
 (* We could let these be automatically inferred (as Prop), but we might
    as well specify Set. *)
-Inductive types : Set := | Nat.
+Inductive types : Set := | _nat | _bool.
 Inductive functions : list types -> types -> Set :=
-| zero : functions nil  Nat
-| succ : functions (Nat::nil) Nat.
+| zero' : functions nil  _nat
+| succ' : functions (_nat::nil) _nat
+| leq' : functions (_nat::_nat::nil) _bool.
 Inductive relations : list types -> Set :=
-| int_eq : relations (Nat :: Nat :: nil).
+| eq_n' : relations (_nat :: _nat :: nil)
+| eq_b' : relations (_bool :: _bool :: nil).
 
-Let mysentence := univ (type := Nat)
-                    (impl (predApp int_eq [var' Occ_head; app zero : Term functions _ Nat])
-                      (impl (predApp int_eq [var' Occ_head; app succ (app zero)])
-                        false)) : Sentence functions relations.
+(* Ugly, but Coq doesn't unfold vararg_* properly otherwise. *)
+Let zero {context} := app (context := context) zero'.
+Let succ {context} := app (context := context) succ'.
+Let leq {context} := app (context := context) leq'.
+Let eq_n {context} := predApp (functions := functions) (context := context) eq_n'.
+Let eq_b {context} := predApp (functions := functions) (context := context) eq_b'.
 
+Let mysentence := univ
+                    (impl (predApp' eq_n' [var' Occ_head; app zero' : Term functions _ _])
+                      (impl (predApp' eq_n' [var' Occ_head; app succ' (app zero')])
+                        contradiction)) : Sentence functions relations.
+
+(* The `(rest := nil)` specifies that `x` is the outermost variable*)
+Let sampleFormula (* {rest} *) :=
+let x := var' (Occ_tail (Occ_tail (Occ_head (rest := nil)))) in
+let y := var' (Occ_tail Occ_head) in
+let b := var' Occ_head in
+(impl (eq_b (leq x y) b)
+(impl (eq_b (leq y x) b)
+  (eq_n x y))).
+
+(* TODO: find and put implementation of actual Nat.leqb here *)
+Parameter leqb : nat -> nat -> bool.
 Definition standard_model : Model functions relations := {|
-  modelType _    := nat (* match x with | Nat => nat end *);
-  modelFun _ _ f := match f in functions arity _
-                            return vararg_function _ arity nat with
-    | zero => 0
-    | succ => S
+  modelType type := match type with | _nat => nat | _bool => bool end;
+  modelFun _ _ f := match f in functions arity type
+                            return vararg_function _ arity (_ type) with
+    | zero' => 0
+    | succ' => S
+    | leq'  => leqb
     end;
   modelPred _ r := match r in relations arity return vararg_predicate _ arity with
-    | int_eq => @eq nat
+    | eq_n' => @eq nat
+    | eq_b' => @eq bool
     end
 |}.
 
 Eval compute in interpret standard_model [] mysentence.
+Eval compute in interpret standard_model
+                          [false : standard_model.(modelType) _bool;
+                           0 : standard_model.(modelType) _nat;
+                           1 : standard_model.(modelType) _nat] sampleFormula.
+Eval compute in interpret standard_model []
+            (univ (univ (formula_subst
+                            (add1ContextToSubst [succ (var' Occ_head);
+                                                 var' Occ_head])
+                            sampleFormula))).
+Check (let subst_y_with_Sx := [succ (var' Occ_head); var' Occ_head] in
+      eq_refl : formula_subst subst_y_with_Sx (univ sampleFormula)
+              = univ (formula_subst (add1ContextToSubst subst_y_with_Sx) sampleFormula)).
 
 End Example.
