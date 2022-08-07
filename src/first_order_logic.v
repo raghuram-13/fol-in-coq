@@ -175,12 +175,19 @@ Section Proofs.
 
 Section defs.
 
-#[local] Notation "'Assumptions'" :=
-(forall context, Formula context -> Type)
+(* #[local] Notation "'Assumptions'" := (forall context, Formula context -> Type)
+    (only parsing). *)
+(* Note: experimental. *)
+#[local] Notation "'Assumptions' context" := (Formula context -> Type)
     (only parsing).
 
 Implicit Types assumptions Γ : Assumptions.
 
+(* We define proofs in a context of free variables, with a set of
+   assumptions that is allowed to refer to the variables. So proofs of
+   statements with free variables are not to be interpreted as
+   implicitly generalised (although if the set of assumptions does not
+   refer to that variable, we should be able to generalise them.) *)
 Inductive Proof.
 
 End defs.
