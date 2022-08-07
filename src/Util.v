@@ -102,8 +102,9 @@ End Notation.
 Import (notations) Notation.
 
 Section ForVariables.
-Context {A : Type}. Implicit Type motive : A -> Type. Context {motive}.
+Context {A : Type}. Implicit Type motive : A -> Type.
 
+Section Temp. Context {motive}.
 Definition first {a l} : Heterolist motive (a :: l) -> motive a :=
 fun '(a :: _) => a.
 Definition rest {a l} : Heterolist motive (a :: l) -> Heterolist motive l :=
@@ -114,6 +115,7 @@ match occ with
 | Occ_head     => first
 | Occ_tail occ => ref occ ∘ rest
 end.
+End Temp.
 
 (* Let's see how well this works. *)
 (* Problem: `List.map id l` and `l` are not definitionally equal.
@@ -136,6 +138,12 @@ end.
 
 Check map' (*motive1 := fun _ => nat*) (motive2 := id)
             (fun _ (b : nat) => b).
+
+Fixpoint mapList {motive} l
+  : (forall {a}, Occ a l -> motive a) -> Heterolist motive l := match l with
+| nil         => fun f => []
+| cons a rest => fun f => f a Occ_head :: mapList rest (fun {a} o => f a (Occ_tail o))
+end.
 
 End ForVariables.
 End Heterolist.

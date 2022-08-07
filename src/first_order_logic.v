@@ -81,10 +81,13 @@ Definition addContext extraContext {context}
 Term_rect' (fun _ occ => var' (Occ.addBefore extraContext occ))
            (fun _ _ f _ args' => app' f args').
 
-Section TermSubst.
-Context {context context'} (values : Heterolist (Term context) context').
+(* A list of values for the `context'` which must be valid in `context`. *)
+Definition Substitutions context context' := Heterolist (Term context') context.
 
-Definition term_subst [type] : Term context' type -> Term context type :=
+Section TermSubst.
+Context {context context'} (values : Substitutions context context').
+
+Definition term_subst [type] : Term context type -> Term context' type :=
 (* match term with
 | var o      => Array.ref o values
 | app' f args => app' f (Array.map term_subst args)
@@ -94,15 +97,16 @@ Term_rect' (fun _ occ => Heterolist.ref occ values)
 End TermSubst.
 
 (* This now works pretty much exactly like
-   _Completeness theorems for first-order logic, analysed in constructive type theory_
+   (* _Completeness theorems for first-order logic, analysed in constructive type theory_ *)
+   _Formalized First-Order Logic_ by Andreas Halkjær (Section 5.1.2)
    and other sources.
    Recursion except through quantifiers (or anything that changes the
     context) is straightforward, and for moving under a quantifier we
-    increment the de Bruijn indexes (achieved by `Heterolist.map (addContext 1)`) and
+    increment the de Bruijn indexes (achieved by `Heterolist.map (addContext _)`) and
     add an identity substitution at the front (achieved by
-    `var BNat_zero ::`). *)
-Fixpoint formula_subst {context context'} (values : Heterolist (Term context) context')
-                       (formula : Formula context') : Formula context :=
+    `var' Occ_head ::`). *)
+Fixpoint formula_subst {context context'} (values : Substitutions context context')
+                       (formula : Formula context) : Formula context' :=
 match formula with
 | predApp r args => predApp r (Heterolist.map (term_subst values) args)
 | false          => false
@@ -113,6 +117,15 @@ match formula with
                                           values)
                                      formula)
 end.
+
+(* Constructing `Value`s to use in substitutions. *)
+Definition value_id {context} : Substitutions context context :=
+Heterolist.mapList context (fun _ o => var' o).
+
+(* We perhaps don't need this: it's just heterocons, after all. *)
+(* Definition subst_head {type context context'} (values : Substitutions context context')
+                      (new_value : Term context' type)
+  : Substitutions (type :: context) context' := new_value :: values. *)
 
 End Substitution.
 
