@@ -97,7 +97,11 @@ Module Notation.
 
   Notation "[ ]" := heteronil : heterolist.
   Infix "::" := heterocons : heterolist.
-  Notation "[ x ; .. ; y ]" := (x :: .. (y :: heteronil)..) : heterolist.
+  (* This is redundant, but introducing the mere syntax [ x ; .. ; y ]
+     interferes with `Coq.Lists.List.ListNotations`'s redundant way of doing
+     this. *)
+  Notation "[ x ]" := (x :: heteronil) : heterolist.
+  Notation "[ x ; y ; .. ; z ]" := (x :: (y :: .. (z :: heteronil)..)) : heterolist.
 End Notation.
 Import (notations) Notation. #[local] Open Scope heterolist.
 
