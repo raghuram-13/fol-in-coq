@@ -93,13 +93,13 @@ Module Heterolist.
 
 Module Notation.
   Declare Scope heterolist. Bind Scope heterolist with Heterolist.
-  Delimit Scope heterolist with heterolist. Open Scope heterolist.
+  Delimit Scope heterolist with heterolist. #[local] Open Scope heterolist.
 
   Notation "[ ]" := heteronil : heterolist.
   Infix "::" := heterocons : heterolist.
   Notation "[ x ; .. ; y ]" := (x :: .. (y :: heteronil)..) : heterolist.
 End Notation.
-Import (notations) Notation.
+Import (notations) Notation. #[local] Open Scope heterolist.
 
 Section ForVariables.
 Context {A : Type}. Implicit Type motive : A -> Type.

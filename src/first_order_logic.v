@@ -23,9 +23,8 @@ Definition varType : types := projT1 (Occ.fromBNat ind).
 Definition var : Term context varType := var' (projT2 (Occ.fromBNat ind)).
 End var.
 
-Definition app {context type arity}
-  : functions arity type
-  -> vararg_function (Term context) arity (Term context type) :=
+Definition app {context type arity} : forall function : functions arity type,
+  vararg_function (Term context) arity (Term context type) :=
 vararg_curry ∘ app'.
 
 Definition ClosedTerm := Term nil.
@@ -55,12 +54,16 @@ end.
     propositional language on a set of variables, and have the free
     case as an instance? *)
 Inductive Formula | context :=
-| predApp {arity} (predicate : predicates arity)
-                  (args : Heterolist (Term context) arity)
+| predApp' {arity} (predicate : predicates arity)
+                   (args : Heterolist (Term context) arity)
 | false
 | impl : Formula context -> Formula context -> Formula context
 | univ {type} : Formula (type :: context) -> Formula context.
 #[global] Arguments false {context}.
+
+Definition predApp {context arity} : forall predicate : predicates arity,
+  vararg_function (Term context) arity (Formula context) :=
+vararg_curry ∘ predApp'.
 
 Definition Sentence := Formula nil.
 
@@ -108,14 +111,13 @@ End TermSubst.
 Fixpoint formula_subst {context context'} (values : Substitutions context context')
                        (formula : Formula context) : Formula context' :=
 match formula with
-| predApp r args => predApp r (Heterolist.map (term_subst values) args)
-| false          => false
-| impl p q       => impl (formula_subst values p) (formula_subst values q)
-| @univ _ type formula   => univ (formula_subst (context := type :: context)
-                                     (var' Occ_head ::
-                                        Heterolist.map (addContext (type :: nil))
-                                          values)
-                                     formula)
+| predApp' r args => predApp' r (Heterolist.map (term_subst values) args)
+| false           => false
+| impl p q        => impl (formula_subst values p) (formula_subst values q)
+| @univ _ type formula =>
+  univ (formula_subst
+             (var' Occ_head :: Heterolist.map (addContext (type :: nil)) values)
+             formula)
 end.
 
 (* Constructing `Value`s to use in substitutions. *)
@@ -136,8 +138,7 @@ Section Semantics.
 Structure Model := {
   modelType : types -> Type;
   modelFun {type arity}
-    : functions arity type
-    -> vararg_function modelType arity (modelType type);
+    : functions arity type -> vararg_function modelType arity (modelType type);
   modelPred {arity}
     : predicates arity -> vararg_predicate modelType arity
 }.
@@ -154,7 +155,7 @@ Term_rect' (fun _ occ => Heterolist.ref occ values)
    vary in the recursive calls. *)
 Fixpoint interpret {context} (values : Heterolist m.(modelType) context)
   (formula : Formula context) : Prop := match formula with
-| predApp r args       => vararg_apply (m.(modelPred) r)
+| predApp' r args      => vararg_apply (m.(modelPred) r)
                             (Heterolist.map (value values) args)
 | false                => False
 | impl p q             => interpret values p -> interpret values q
