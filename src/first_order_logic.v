@@ -178,10 +178,16 @@ Section defs.
 (* #[local] Notation "'Assumptions'" := (forall context, Formula context -> Type)
     (only parsing). *)
 (* Note: experimental. *)
+(* Level motivations:
+   - Standalone notations like [], 'Assumptions' above, etc. are at level 0.
+   - Since (Assumptions c) is a term, there's no reason to exclude it from
+     being parsed anywhere, so it should have level 0.
+   - `context` should at least bind tighter than ⊔, +, * so we can use such
+     type operations etc. *)
 #[local] Notation "'Assumptions' context" := (Formula context -> Type)
-    (only parsing).
+    (at level 0, context at level 30, only parsing).
 
-Implicit Types assumptions Γ : Assumptions.
+(* Implicit Types assumptions Γ : Assumptions context. *)
 
 (* We define proofs in a context of free variables, with a set of
    assumptions that is allowed to refer to the variables. So proofs of
