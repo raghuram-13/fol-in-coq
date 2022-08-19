@@ -40,7 +40,39 @@ Inductive BNat : nat -> Set :=
 | BNat_zero {n} : BNat (S n)
 | BNat_succ {n} : BNat n -> BNat (S n).
 
+Module BNat.
+
 Lemma no_bnat_zero : BNat 0 -> False. exact (fun a => match a with end). Qed.
+
+(* Better to define functions when Coq's pattern-matching is so difficult. *)
+Section Pred. Context {n} (a : BNat (S n)).
+Definition pred_spec : { b : BNat n | BNat_succ b = a } + {BNat_zero = a} :=
+match a with
+| BNat_zero   => inright eq_refl
+| BNat_succ a => inleft (exist _ a eq_refl)
+end.
+Definition pred : BNat n + {BNat_zero = a} := match pred_spec with
+| inright h => inright h
+| inleft (exist _ a _) => inleft a
+end.
+End Pred.
+
+Section Cases. Import (notations) EqNotations.
+Definition cases {n} {P : BNat (S n) -> Type}
+  (zero : P BNat_zero) (succ : forall a : BNat n, P (BNat_succ a))
+  (a : BNat (S n)) : P a := match BNat.pred_spec a with
+| inright h            => rew h in zero
+| inleft (exist _ n h) => rew h in succ n
+end.
+End Cases.
+
+End BNat.
+
+Fixpoint List_bnatRef {A} (l : list A) : BNat (List.length l) -> A :=
+match l with
+| nil => False_rect _ ∘ BNat.no_bnat_zero
+| cons a l => BNat.cases a (List_bnatRef l)
+end.
 
 (* Occurrences of an element in a list. *)
 Inductive Occ {A : Type} : A -> list A -> Type :=
@@ -67,10 +99,10 @@ Fixpoint toBNat {a l} (occ : Occ a l) : BNat (List.length l) := match occ with
 | Occ_tail occ => BNat_succ (toBNat occ)
 end.
 
-Definition fromBNat {l} : BNat (List.length l) -> {a & Occ a l}.
-refine (let _fromBNat := _ : forall n (a : BNat n) l,
-                               List.length l = n -> {a & Occ a l}
-        in fun b => _fromBNat _ b _ eq_refl).
+Definition fromBNat' l : BNat (List.length l) -> {a & Occ a l}.
+refine (let _fromBNat' := _ : forall n (a : BNat n) l,
+                                List.length l = n -> {a & Occ a l}
+        in fun b => _fromBNat' _ b _ eq_refl).
 induction 1 as [|? b h_i]
 ; (intros [|a rest] h;
   simpl in h; [ discriminate h | injection h as h ]); [
@@ -78,6 +110,12 @@ induction 1 as [|? b h_i]
 | refine (let (a, h) := h_i rest h in _); econstructor; exact (Occ_tail h)
 ].
 Defined.
+
+Fixpoint fromBNat l : forall n : BNat (List.length l),
+                        Occ (List_bnatRef l n) l := match l with
+| nil      => (* dependent comp *) fun n => False_rect _ (BNat.no_bnat_zero n)
+| cons a l => BNat.cases Occ_head (fun n => Occ_tail (fromBNat l n))
+end.
 
 End ForVariables.
 End Occ.
@@ -116,11 +154,38 @@ fun '(a :: _) => a.
 Definition rest {a l} : Heterolist motive (a :: l) -> Heterolist motive l :=
 fun '(_ :: l) => l.
 
-Fixpoint ref {a l} (occ : Occ a l) : Heterolist motive l -> motive a :=
+Section Ref. Import (notations) EqNotations.
+(* Problem:
+   We need to get at the fact that when `n : BNat (S (length l))` is destructed
+   into `BNat_succ n`, `n : BNat (length l)`. No idea how to get Coq to do this.
+
+   Update: circumvented using `BNat.pred` returning a `sumor`. Will delete this
+   comment after one commit. *)
+
+(* Old version returning sigT. *)
+Fixpoint ref_as_sigT {l} : BNat (List.length l) -> Heterolist motive l
+  -> sigT motive := match l with
+| nil    => False_rect _ ∘ BNat.no_bnat_zero
+| cons a l => BNat.cases (existT _ a ∘ first) (fun n => ref_as_sigT n ∘ rest)
+end.
+
+(* Keep only the list as a parameter to ensure the `BNat` type gets rewritten
+   when matching against it. *)
+Fixpoint ref {l} : forall n : BNat (List.length l), Heterolist motive l
+  -> motive (List_bnatRef l n) := match l with
+| nil      => (* dependent comp *) fun n => False_rect _ (BNat.no_bnat_zero n)
+| cons a l => BNat.cases (P := fun n => Heterolist motive (a::l) -> motive (List_bnatRef (a::l) n))
+                first
+                (fun n => fun l => ref n (rest l))
+end.
+
+Fixpoint ref' {a l} (occ : Occ a l) : Heterolist motive l -> motive a :=
 match occ with
 | Occ_head     => first
-| Occ_tail occ => ref occ ∘ rest
+| Occ_tail occ => ref' occ ∘ rest
 end.
+
+End Ref.
 End Temp.
 
 (* Let's see how well this works. *)
