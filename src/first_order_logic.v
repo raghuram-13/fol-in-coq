@@ -21,8 +21,8 @@ Inductive Term context | type :=
 | app' {arity} (function : functions arity type) (args : Heterolist Term arity).
 
 Section var. Context {context} (ind : BNat (List.length context)).
-Definition varType : types := projT1 (Occ.fromBNat ind).
-Definition var : Term context varType := var' (projT2 (Occ.fromBNat ind)).
+Definition varType : types := List_bnatRef context ind.
+Definition var : Term context varType := var' (Occ.fromBNat context ind).
 End var.
 
 Definition app {context type arity} : forall function : functions arity type,
@@ -114,7 +114,7 @@ Definition term_subst [type] : Term context type -> Term context' type :=
 | var o      => Array.ref o values
 | app' f args => app' f (Array.map term_subst args)
 end. *)
-Term_rect' (fun _ occ => Heterolist.ref occ values)
+Term_rect' (fun _ occ => Heterolist.ref' occ values)
            (fun _ _ f _ args' => app' f args').
 End TermSubst.
 
@@ -153,7 +153,7 @@ Set Strict Implicit. Context (m : Model).
 
 Definition value {context} (values : Heterolist m.(modelType) context)
   [type] : Term context type -> m.(modelType) type :=
-Term_rect' (fun _ occ => Heterolist.ref occ values)
+Term_rect' (fun _ occ => Heterolist.ref' occ values)
            (fun _ _ f _ args' => vararg_apply (m.(modelFun) f) args').
 
 (* Can't use context, values section variables because values has to
