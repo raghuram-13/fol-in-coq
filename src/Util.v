@@ -56,7 +56,8 @@ Fixpoint addBefore l1 {a l2} : Occ a l2 -> Occ a (l1 ++ l2) := match l1 with
 | a :: rest => Occ_tail ∘ addBefore rest
 end.
 
-Fixpoint addAfter l1 {a l2} (occ : Occ a l2) : Occ a (l2 ++ l1) := match occ with
+Fixpoint addAfter l1 {a l2} (occ : Occ a l2) : Occ a (l2 ++ l1) :=
+match occ with
 | Occ_head     => Occ_head
 | Occ_tail occ => Occ_tail (addAfter l1 occ)
 end.
@@ -76,7 +77,7 @@ induction 1 as [|? b h_i]
   econstructor; exact Occ_head
 | refine (let (a, h) := h_i rest h in _); econstructor; exact (Occ_tail h)
 ].
-Qed.
+Defined.
 
 End ForVariables.
 End Occ.
@@ -101,7 +102,8 @@ Module Notation.
      interferes with `Coq.Lists.List.ListNotations`'s redundant way of doing
      this. *)
   Notation "[ x ]" := (x :: heteronil) : heterolist.
-  Notation "[ x ; y ; .. ; z ]" := (x :: (y :: .. (z :: heteronil)..)) : heterolist.
+  Notation "[ x ; y ; .. ; z ]" := (x :: (y :: .. (z :: heteronil)..))
+    : heterolist.
 End Notation.
 Import (notations) Notation. #[local] Open Scope heterolist.
 
