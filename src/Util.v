@@ -99,18 +99,6 @@ Fixpoint toBNat {a l} (occ : Occ a l) : BNat (List.length l) := match occ with
 | Occ_tail occ => BNat_succ (toBNat occ)
 end.
 
-Definition fromBNat' l : BNat (List.length l) -> {a & Occ a l}.
-refine (let _fromBNat' := _ : forall n (a : BNat n) l,
-                                List.length l = n -> {a & Occ a l}
-        in fun b => _fromBNat' _ b _ eq_refl).
-induction 1 as [|? b h_i]
-; (intros [|a rest] h;
-  simpl in h; [ discriminate h | injection h as h ]); [
-  econstructor; exact Occ_head
-| refine (let (a, h) := h_i rest h in _); econstructor; exact (Occ_tail h)
-].
-Defined.
-
 Fixpoint fromBNat l : forall n : BNat (List.length l),
                         Occ (List_bnatRef l n) l := match l with
 | nil      => (* dependent comp *) fun n => False_rect _ (BNat.no_bnat_zero n)
@@ -155,20 +143,6 @@ Definition rest {a l} : Heterolist motive (a :: l) -> Heterolist motive l :=
 fun '(_ :: l) => l.
 
 Section Ref. Import (notations) EqNotations.
-(* Problem:
-   We need to get at the fact that when `n : BNat (S (length l))` is destructed
-   into `BNat_succ n`, `n : BNat (length l)`. No idea how to get Coq to do this.
-
-   Update: circumvented using `BNat.pred` returning a `sumor`. Will delete this
-   comment after one commit. *)
-
-(* Old version returning sigT. *)
-Fixpoint ref_as_sigT {l} : BNat (List.length l) -> Heterolist motive l
-  -> sigT motive := match l with
-| nil    => False_rect _ ∘ BNat.no_bnat_zero
-| cons a l => BNat.cases (existT _ a ∘ first) (fun n => ref_as_sigT n ∘ rest)
-end.
-
 (* Keep only the list as a parameter to ensure the `BNat` type gets rewritten
    when matching against it. *)
 Fixpoint ref {l} : forall n : BNat (List.length l), Heterolist motive l
@@ -178,6 +152,7 @@ Fixpoint ref {l} : forall n : BNat (List.length l), Heterolist motive l
                 first
                 (fun n => fun l => ref n (rest l))
 end.
+End Ref.
 
 Fixpoint ref' {a l} (occ : Occ a l) : Heterolist motive l -> motive a :=
 match occ with
@@ -185,7 +160,6 @@ match occ with
 | Occ_tail occ => ref' occ ∘ rest
 end.
 
-End Ref.
 End Temp.
 
 (* Let's see how well this works. *)
