@@ -49,6 +49,26 @@ Fixpoint Term_rect' {context} {P : types -> Type}
                end) _ args)
 end.
 
+(* Consider "doubly heterogenous" lists worth it for inductive proofs. *)
+(* We could have gone through this for `rect` too, but chose to not
+   define an analogue of `Forall` for types.  (Note that this would have
+   to be a separate inductive definition.) *)
+Fixpoint Term_ind' {context} {P : forall [type], Term context type -> Prop}
+    (var' : forall [type] (occ : Occ type context), P (var' occ))
+    (app' : forall [type arity] (f : functions arity type)
+                                (args : Heterolist (Term context) arity),
+                                Heterolist.Forall P args -> P (app' f args))
+  {type} (term : Term context type) : P term := match term with
+| var' occ    => var' occ
+| app' f args =>
+  app' f args ((fix mapForall {l} args :=
+               match args return Heterolist.Forall P args with
+               | []          => Heterolist.Forall_nil
+               | arg :: rest => Heterolist.Forall_cons (Term_ind' var' app' arg)
+                                                       (mapForall rest)
+               end) _ args)
+end.
+
 (* Note: this has unnecessary repetition in that it repeats the
    operations of propositional logic and this might force us to redo
    things we did for propositional logic.

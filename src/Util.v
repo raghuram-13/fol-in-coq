@@ -136,6 +136,18 @@ Import (notations) Notation. #[local] Open Scope heterolist.
 Section ForVariables.
 Context {A : Type}. Implicit Type motive : A -> Type.
 
+Section Rect.
+
+Inductive Forall {motive} {P : forall [a], motive a -> Prop}
+  : forall {l}, Heterolist motive l -> Prop :=
+| Forall_nil : Forall heteronil
+| Forall_cons {a l} {x : motive a} {l' : Heterolist motive l}
+    : P x -> Forall l' -> Forall (x :: l').
+#[global] Arguments Forall : clear implicits.
+#[global] Arguments Forall {motive} P {_} _.
+
+End Rect.
+
 Section Temp. Context {motive}.
 Definition first {a l} : Heterolist motive (a :: l) -> motive a :=
 fun '(a :: _) => a.
