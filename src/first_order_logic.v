@@ -35,18 +35,18 @@ Definition ClosedTerm := Term nil.
    gets into heterogenous lists depending on two parameters (using
    things like homogenize) and that gets overly complicated quickly. *)
 Fixpoint Term_rect' {context} {P : types -> Type}
-  (var' : forall [type], Occ type context -> P type)
-  (app' : forall [type arity]
-                (f : functions arity type) (args : Heterolist (Term context) arity),
-                Heterolist P arity -> P type)
+    (var' : forall [type] (occ: Occ type context), P type)
+    (app' : forall [type arity] (f : functions arity type)
+                                (args : Heterolist (Term context) arity),
+                                Heterolist P arity -> P type)
   {type} (term : Term context type) : P type := match term with
 | var' occ    => var' occ
-| app' f args => app' f args
-                  ((fix ListTerm_rect' {l} args :=
-                   match args in Heterolist _ l return Heterolist P l with
-                   | []          => []
-                   | arg :: rest => Term_rect' var' app' arg :: ListTerm_rect' rest
-                   end) _ args)
+| app' f args =>
+  app' f args ((fix ListTerm_rect' {l} args :=
+               match args in Heterolist _ l return Heterolist P l with
+               | []          => []
+               | arg :: rest => Term_rect' var' app' arg :: ListTerm_rect' rest
+               end) _ args)
 end.
 
 (* Note: this has unnecessary repetition in that it repeats the
@@ -125,13 +125,14 @@ End TermSubst.
    Recursion except through quantifiers (or anything that changes the
    context) is straightforward, and for moving under a quantifier we
    use add1ContextToSubst. *)
-Fixpoint formula_subst {context context'} (values : Substitutions context context')
-                       (formula : Formula context) : Formula context' :=
+Fixpoint formula_subst {context context'}
+    (values : Substitutions context context')
+    (formula : Formula context) : Formula context' :=
 match formula with
 | predApp' r args => predApp' r (Heterolist.map (term_subst values) args)
 | contradiction   => contradiction
 | impl p q        => impl (formula_subst values p) (formula_subst values q)
-| @univ _ type formula => univ (formula_subst (add1ContextToSubst values) formula)
+| univ formula    => univ (formula_subst (add1ContextToSubst values) formula)
 end.
 
 End Substitution.
@@ -218,7 +219,8 @@ Module FOLFormulaNotations.
   Notation "⊥" := contradiction : first_order_formula.
   Infix "'->" := impl (at level 60, right associativity) : first_order_formula.
 
-  Notation "¬ φ" := (neg φ) (at level 35, right associativity) : first_order_formula.
+  Notation "¬ φ" := (neg φ) (at level 35, right associativity)
+    : first_order_formula.
 
   Notation "∀. φ" := (univ φ) (at level 95, right associativity).
   Notation "∃. φ" := (exist φ) (at level 95, right associativity).
