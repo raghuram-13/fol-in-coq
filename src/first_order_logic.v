@@ -184,41 +184,47 @@ Structure Model := {
 Section Interpretation.
 Set Strict Implicit. Context (m : Model).
 
-Definition evaluate {context} (values : Heterolist m.(modelType) context)
+Definition evaluate'' {context} (values : Heterolist m.(modelType) context)
   : forall [type], Term context type -> m.(modelType) type :=
 Term_rect' (fun ind => Heterolist.ref ind values)
            (fun _ _ f _ args' => vararg_apply (m.(modelFun) f) args').
-(* Evaluate term to a function from variable values to value. *)
-Definition evaluate' {context} {type} (term : Term context type) :=
-vararg_curry (fun values => evaluate values term).
 
 (* Can't use context, values section variables because values has to
    vary in the recursive calls. *)
-Fixpoint interpret {context} (values : Heterolist m.(modelType) context)
+Fixpoint interpret'' {context} (values : Heterolist m.(modelType) context)
   (formula : Formula context) : Prop := match formula with
 | predApp' r args      => vararg_apply (m.(modelPred) r)
-                            (Heterolist.map (evaluate values) args)
+                            (Heterolist.map (evaluate'' values) args)
 | contradiction        => False
-| impl p q             => interpret values p -> interpret values q
+| impl p q             => interpret'' values p -> interpret'' values q
 | @univ _ type formula => forall x : m.(modelType) type,
-                            interpret (x :: values) formula
+                            interpret'' (x :: values) formula
 end.
+
+Section Variations. Context {context type}.
+
+Definition evaluate (term : Term context type) values := evaluate'' values term.
+(* Evaluate term to a function from variable values to value. *)
+Definition evaluate' := vararg_curry ∘ evaluate.
+
+Definition interpret := Coq.Program.Basics.flip (@interpret'' context).
 (* Interpret formula as a predicate on possible variable values. *)
-Definition interpret' {context} :=
-vararg_curry ∘ Coq.Program.Basics.flip (@interpret context).
+Definition interpret' := vararg_curry ∘ interpret.
+
+End Variations.
 
 Example evaluate_subst {context context'}
                        (subst_values : Substitutions context context')
                        (values : Heterolist m.(modelType) context')
   [type] (term : Term context type)
-  : evaluate values (term_subst subst_values term)
-    = evaluate (Heterolist.map (evaluate values) subst_values) term.
+  : evaluate'' values (term_subst subst_values term)
+    = evaluate'' (Heterolist.map (evaluate'' values) subst_values) term.
 induction term as [ind|? ? f args h_i] using @Term_ind'.
 + (* unfold term_subst; simpl. unfold evaluate at 2; simpl. *)
   symmetry; apply Heterolist.ref_map_eq_app_ref.
-+ unfold term_subst, evaluate at 1 2; repeat simpl;
-  fold (term_subst subst_values) (evaluate values)
-       (evaluate (Heterolist.map (evaluate values) subst_values)).
++ unfold term_subst, evaluate'' at 1 2; repeat simpl;
+  fold (term_subst subst_values) (evaluate'' values)
+       (evaluate'' (Heterolist.map (evaluate'' values) subst_values)).
   rewrite Heterolist.map_map. f_equal. apply (Heterolist.map_equals h_i).
 Qed.
 
@@ -353,7 +359,7 @@ Definition standard_model : Model functions relations := {|
    reduction strategy or the equivalent `Compute` command, and I don't
    know why. *)
 
-Compute interpret standard_model [] mysentence.
+Compute interpret'' standard_model [] mysentence.
 
 (* Hint Extern 1 => (match goal with
   | |- _ = modelType types _ _ _ ?t => destruct t
@@ -364,17 +370,18 @@ end) : core. *)
    and it tries to type-check it before looking at the next argument,
    `sampleFormula`, which would give it the answer too.
    Notice how just supplying the `?a :types` is enough, it knows the
-   rest.
-   Simply interchanging the arguments can also solve this problem. *)
-Compute interpret standard_model [false : _ bool'; 0 : _ nat'; 1 : _ nat']
-                                 sampleFormula.
-(* Curried version of the last example. Also avoids the problem. *)
+   rest. *)
+Compute interpret'' standard_model [false : _ bool'; 0 : _ nat'; 1 : _ nat']
+                                   sampleFormula.
+(* Simply interchanging the arguments can solve this problem. *)
+Compute interpret standard_model sampleFormula [false; 0; 1].
+(* Curried version of the same as the last two checks. *)
 Eval compute -[leqb] in interpret' standard_model sampleFormula.
 
-Compute interpret standard_model []
+Compute interpret standard_model
             (∀' ∀' (formula_subst (add1ContextToSubst [app succ (var head);
                                                        var head])
-                                  sampleFormula)).
+                                  sampleFormula)) [].
 
 Succeed Check let subst_y_with_Sx := [app succ (var head); var head] in eq_refl:
 formula_subst subst_y_with_Sx (∀' sampleFormula)
