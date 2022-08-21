@@ -115,10 +115,6 @@ Definition fromTail : ListIndex l -> ListIndex (a::l) := BNat_succ.
 End PseudoConstructors.
 
 Definition ref {A} : forall (l : list A), ListIndex l -> A :=
-(* match l with
-| nil      => BNat.elim_bnat_zero
-| cons a l => BNat.cases a (ref l)
-end *)
 ListIndex_rect (fun a _ => a) (fun _ _ _ rec => rec).
 
 Section Add. Context {A : Type}. Implicit Type l : list A.
@@ -127,16 +123,8 @@ match l1 with
 | nil         => id
 | cons a rest => fromTail ∘ addBefore rest
 end.
-(* Import (notations) EqNotations.
-Definition addBefore' l1 {l2} : ListIndex l2 -> ListIndex (l1 ++ l2) :=
-rew <- [fun length => ListIndex l2 -> BNat length] (List.app_length l1 l2) in
-BNat.addBefore (List.length l1) (n := List.length l2). *)
 
 Definition addAfter l1 : forall {l2}, ListIndex l2 -> ListIndex (l2 ++ l1) :=
-(* match l2 with
-| nil         => False_rect _ ∘ BNat.no_bnat_zero
-| cons a rest => BNat.cases BNat_zero (BNat_succ ∘ addAfter l1)
-end *)
 ListIndex_rect (fun _ _ => head) (fun _ _ _ rec => fromTail rec).
 
 Section AddRefLemmas. Import (notations) EqNotations.
@@ -192,10 +180,6 @@ end.
 
 Definition fromIndex : forall l (ind : ListIndex l),
   Occ (ListIndex.ref l ind) l :=
-(* match l with
-| nil      => BNat.elim_bnat_zero
-| cons a l => BNat.cases Occ_head (fun n => Occ_tail (fromIndex l n))
-end *)
 ListIndex_rect (fun _ _ => Occ_head) (fun _ _ _ rec => Occ_tail rec).
 
 Section OccBNatLemmas. Import (notations) EqNotations.
@@ -258,14 +242,6 @@ Inductive Forall {A motive} {P : forall {a : A}, motive a -> Prop}
   : P x -> Forall l' -> Forall (x :: l').
 #[global] Arguments Forall {A motive} P {_} _.
 
-(* Inductive Forall' {A motive}
-  : forall {l} (P : Heterolist (fun a : A => motive a -> Prop) l),
-      Heterolist motive l -> Prop :=
-| Forall'_nil : Forall' [] []
-| Forall'_cons {a l} {x : motive a} {l' : Heterolist motive l}
-                     {Pa : motive a -> Prop} {P}
-  : Pa x -> Forall' P l' -> Forall' (Pa :: P) (x :: l'). *)
-
 Module Forall.
 
 Module Notation.
@@ -302,12 +278,6 @@ Section Ref.
    when matching against it. *)
 Definition ref : forall {l} (ind : ListIndex l), Heterolist motive l
   -> motive (ListIndex.ref l ind) :=
-(* match l with
-| nil      => (* dependent comp *) fun n => False_rect _ (BNat.no_bnat_zero n)
-| cons a l => BNat.cases (P := fun n => Heterolist motive (a::l) -> motive (ListIndex.ref (a::l) n))
-                first
-                (fun n => fun l => ref n (rest l))
-end *)
 ListIndex_rect (fun _ _ => first) (fun _ _ _ rec => rec ∘ rest).
 End Ref.
 

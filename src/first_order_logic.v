@@ -51,7 +51,7 @@ end.
 End Term_rect'.
 
 Section Term_ind'. #[local] Unset Implicit Arguments.
-(* Consider "doubly heterogenous" lists worth it for inductive proofs. *)
+(* Consider "doubly heterogenous" lists worth it for inductive *proofs*. *)
 (* We could have gone through this for `rect` too, but chose to not
    define an analogue of `Forall` for types.  (Note that this would have
    to be a separate inductive definition.) *)
@@ -146,10 +146,6 @@ Section TermSubst.
 Context {context context'} (values : Substitutions context context').
 
 Definition term_subst : forall [type], Term context type -> Term context' type :=
-(* match term with
-| var o      => Array.ref o values
-| app' f args => app' f (Array.map term_subst args)
-end. *)
 Term_rect' (fun ind => Heterolist.ref ind values)
            (fun _ _ f _ args' => app' f args').
 End TermSubst.
@@ -233,8 +229,6 @@ Section Proofs.
 
 Section defs.
 
-(* #[local] Notation "'Assumptions'" := (forall context, Formula context -> Type)
-    (only parsing). *)
 (* Note: experimental. *)
 Notation Assumptions context := (Formula context -> Type) (only parsing).
 
