@@ -292,6 +292,10 @@ Inductive relations : list types -> Set :=
 | eq_n : relations [_nat; _nat]
 | eq_b : relations [_bool; _bool].
 
+Notation Term := (Term functions).
+Notation ClosedTerm := (ClosedTerm functions).
+Notation Formula := (Formula functions relations).
+Notation Sentence := (Sentence functions relations).
 Notation app := (app (functions := functions)).
 Notation predApp := (@predApp _ functions relations).
 
@@ -302,7 +306,7 @@ Check predApp eq_n (* : ClosedTerm _ _nat -> ClosedTerm _ _nat -> Sentence _ _ *
 Let mysentence := univ (type := _nat)
                     (impl (predApp' eq_n [var' Occ_head; app zero])
                       (impl (predApp' eq_n [var' Occ_head; app succ (app zero)])
-                        contradiction)) : Sentence functions relations.
+                        contradiction)) : Sentence.
 (* Check eq_refl : mysentence
                 = univ (impl (predApp eq_n (var' Occ_head) (app zero))
                         (impl (predApp eq_n (var' Occ_head) (app succ (app zero)))
@@ -312,9 +316,9 @@ Import ListIndex (head, fromTail).
 (* The `(rest := nil)` specifies that `x` is the outermost variable*)
 Let sampleFormula (* {rest} *) :=
 let context := [_bool; _nat; _nat]%list in
-let x : Term _ context _nat := var (fromTail (fromTail head)) in
-let y : Term _ context _nat := var (fromTail head) in
-let b : Term _ context _bool := var head in
+let x : Term context _nat := var (fromTail (fromTail head)) in
+let y : Term context _nat := var (fromTail head) in
+let b : Term context _bool := var head in
 (impl (predApp eq_b (app leq x y) b)
 (impl (predApp eq_b (app leq y x) b)
   (predApp eq_n x y))).
