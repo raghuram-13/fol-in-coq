@@ -1,6 +1,12 @@
 From Coq Require Program.Basics Bool.Bool Lists.List.
 
 Import Coq.Program.Basics. Local Open Scope program_scope.
+
+Section Transparency.
+#[global] Arguments id {_} _ /.
+#[global] Arguments compose {_ _ _} _ _ _ /.
+End Transparency.
+
 Section Logic. Implicit Types p q r : Prop.
 
 Definition not_elim {p q} : ~p -> p -> q := compose (False_ind q).
