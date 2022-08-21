@@ -261,20 +261,20 @@ Module FOLFormulaNotations.
   Open Scope first_order_formula.
 
   Notation "⊥" := contradiction : first_order_formula.
-  Infix "'->" := impl (at level 60, right associativity) : first_order_formula.
+  Infix "->'" := impl (at level 60, right associativity) : first_order_formula.
 
   Notation "¬ φ" := (neg φ) (at level 35, right associativity)
     : first_order_formula.
 
-  Notation "∀. φ" := (univ φ) (at level 95, right associativity).
-  Notation "∃. φ" := (exist φ) (at level 95, right associativity).
+  Notation "∀' φ" := (univ φ) (at level 70, right associativity).
+  Notation "∃' φ" := (exist φ) (at level 70, right associativity).
 
   (* Example: given a predicate symbol `formula` with one argument, the
      formula `∃ x, ¬(formula x)`. *)
-  Check fun formula => ∃.¬predApp' formula [var' Occ_head].
+  Check fun formula => ∃' ¬predApp' formula [var' Occ_head].
   (* or more generally, given a formula with one free variable, applying
      it by substitution instead. *)
-  Check fun formula => ∃.¬formula_subst [var' Occ_head] formula.
+  Check fun formula => ∃' ¬formula_subst [var' Occ_head] formula.
 End FOLFormulaNotations.
 
 
@@ -306,12 +306,13 @@ Let mysentence := univ (type := _nat)
                     (impl (predApp' eq_n [var' Occ_head; app zero])
                       (impl (predApp' eq_n [var' Occ_head; app succ (app zero)])
                         contradiction)) : Sentence.
-(* Check eq_refl : mysentence
-                = univ (impl (predApp eq_n (var' Occ_head) (app zero))
-                        (impl (predApp eq_n (var' Occ_head) (app succ (app zero)))
-                        contradiction)). *)
 
 Import ListIndex (head, fromTail).
+Import (notations) FOLFormulaNotations.
+
+Succeed Check eq_refl :
+mysentence = ∀' predApp eq_n (var head) (app zero)
+                ->' ¬predApp eq_n (var head) (app succ (app zero)).
 
 (* The above expression could be in any context starting with
    `[_bool; _nat; _nat; ...]`. We need to specify the type only so that
@@ -324,10 +325,8 @@ Let sampleFormula : Formula [_; _; _]%list :=
 let x := var (fromTail (fromTail head)) in
 let y := var (fromTail head) in
 let b := var head in
-(impl (predApp eq_b (app leq x y) b)
-(impl (predApp eq_b (app leq y x) b)
-  (predApp eq_n x y))).
-Print sampleFormula.
+(predApp eq_b (app leq x y) b) ->' (predApp eq_b (app leq y x) b)
+                               ->' (predApp eq_n x y).
 
 (* TODO: find and put implementation of actual Nat.leqb here *)
 Fixpoint leqb (m n : nat) : bool := match m, n with
@@ -348,20 +347,37 @@ Definition standard_model : Model functions relations := {|
     end
 |}.
 
+
+(* Note: some of these return huge answers without using the `vm_compute`
+   reduction strategy or the equivalent `Compute` command, and I don't
+   know why. *)
+
 Compute interpret standard_model [] mysentence.
-Compute interpret standard_model
-            [false : standard_model.(modelType) _bool;
-             0 : standard_model.(modelType) _nat;
-             1 : standard_model.(modelType) _nat]
-            sampleFormula.
+
+(* Hint Extern 1 => (match goal with
+  | |- _ = modelType types _ _ _ ?t => destruct t
+end) : core. *)
+(* The essential problem here is that Coq cannot solve
+   `bool = standard_model.(modelType) ?a` backwards (there's no
+   mechanism I know of to hint to it to destruct `?a : types`),
+   and it tries to type-check it before looking at the next argument,
+   `sampleFormula`, which would give it the answer too.
+   Notice how just supplying the `?a :types` is enough, it knows the
+   rest.
+   Simply interchanging the arguments can also solve this problem. *)
+Compute interpret standard_model [false : _ _bool; 0 : _ _nat; 1 : _ _nat]
+                                 sampleFormula.
+(* Curried version of the last example. Also avoids the problem. *)
 Eval compute -[leqb] in interpret' standard_model sampleFormula.
+
 Compute interpret standard_model []
-            (univ (univ (formula_subst
-                            (add1ContextToSubst [app succ (var head);
-                                                 var head])
-                            sampleFormula))).
-Check (let subst_y_with_Sx := [app succ (var head); var head] in
-      eq_refl : formula_subst subst_y_with_Sx (univ sampleFormula)
-              = univ (formula_subst (add1ContextToSubst subst_y_with_Sx) sampleFormula)).
+            (∀' ∀' (formula_subst (add1ContextToSubst [app succ (var head);
+                                                       var head])
+                                  sampleFormula)).
+
+Succeed Check let subst_y_with_Sx := [app succ (var head); var head] in eq_refl:
+formula_subst subst_y_with_Sx (∀' sampleFormula)
+=  ∀' formula_subst (add1ContextToSubst subst_y_with_Sx)
+                    sampleFormula.
 
 End Example.
