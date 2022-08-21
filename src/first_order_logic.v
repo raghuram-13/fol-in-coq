@@ -33,43 +33,41 @@ vararg_curry ∘ app'.
 
 Definition ClosedTerm := Term nil.
 
+Section Term_rect'. #[local] Unset Implicit Arguments.
 (* This comes with motive not depending on the `Term` itself because it
    gets into heterogenous lists depending on two parameters (using
    things like homogenize) and that gets overly complicated quickly. *)
-Fixpoint Term_rect' {context} {P : types -> Type}
-    (var' : forall [type] (occ: Occ type context), P type)
-    (app' : forall [type arity] (f : functions arity type)
-                                (args : Heterolist (Term context) arity),
-                                Heterolist P arity -> P type)
-  [type] (term : Term context type) : P type := match term with
-| var' occ    => var' occ
-| app' f args =>
-  app' f args ((fix ListTerm_rect' {l} args :=
-               match args in Heterolist _ l return Heterolist P l with
-               | []          => []
-               | arg :: rest => Term_rect' var' app' arg :: ListTerm_rect' rest
-               end) _ args)
-end.
+Context {context} {P : types -> Type}
+    (var_case : forall (ind : ListIndex context), P (ListIndex.ref context ind))
+    (app'_case : forall [type arity] (f : functions arity type)
+                                     (args : Heterolist (Term context) arity),
+                   Heterolist P arity -> P type).
+Arguments app'_case [type arity].
 
+Fixpoint Term_rect' [type] (term : Term context type) := match term with
+| var ind     => var_case ind
+| app' f args => app'_case f args (Heterolist.map Term_rect' args)
+end.
+End Term_rect'.
+
+Section Term_ind'. #[local] Unset Implicit Arguments.
 (* Consider "doubly heterogenous" lists worth it for inductive proofs. *)
 (* We could have gone through this for `rect` too, but chose to not
    define an analogue of `Forall` for types.  (Note that this would have
    to be a separate inductive definition.) *)
-Fixpoint Term_ind' {context} {P : forall [type], Term context type -> Prop}
-    (var' : forall [type] (occ : Occ type context), P (var' occ))
-    (app' : forall [type arity] (f : functions arity type)
-                                (args : Heterolist (Term context) arity),
-                                Heterolist.Forall P args -> P (app' f args))
-  [type] (term : Term context type) : P term := match term with
-| var' occ    => var' occ
-| app' f args =>
-  app' f args ((fix mapForall {l} args :=
-               match args return Heterolist.Forall P args with
-               | []          => Heterolist.Forall_nil
-               | arg :: rest => Heterolist.Forall_cons (Term_ind' var' app' arg)
-                                                       (mapForall rest)
-               end) _ args)
+Context {context} {P : forall [type], Term context type -> Prop}
+    (var_case : forall (ind : ListIndex context), P (var ind))
+    (app'_case : forall [type arity] (f : functions arity type)
+                                     (args : Heterolist (Term context) arity),
+                   Heterolist.Forall P args -> P (app' f args)).
+Arguments P [type]. Arguments app'_case [type arity].
+
+Fixpoint Term_ind' [type] (term : Term context type) := match term with
+| var ind     => var_case ind
+| app' f args => app'_case f args (Heterolist.Forall.of_univ Term_ind' args)
 end.
+
+End Term_ind'.
 
 (* Note: this has unnecessary repetition in that it repeats the
    operations of propositional logic and this might force us to redo
@@ -131,6 +129,12 @@ Definition add1ContextToSubst {type context context'}
 var ListIndex.head :: Heterolist.map (addContext [type]) values.
 
 
+Lemma addContext_to_value_id {type context}
+  : add1ContextToSubst value_id = @value_id (type :: context).
+unfold add1ContextToSubst, value_id at 2; simpl; f_equal.
+apply Heterolist.map_mapList.
+Qed.
+
 Section TermSubst.
 Context {context context'} (values : Substitutions context context').
 
@@ -181,6 +185,9 @@ Definition value {context} (values : Heterolist m.(modelType) context)
   : forall [type], Term context type -> m.(modelType) type :=
 Term_rect' (fun ind => Heterolist.ref ind values)
            (fun _ _ f _ args' => vararg_apply (m.(modelFun) f) args').
+(* `value` of a term as a function from variable values to value. *)
+Definition value' {context} {type} (term : Term context type) :=
+vararg_curry (fun values => value values term).
 
 (* Can't use context, values section variables because values has to
    vary in the recursive calls. *)
@@ -193,6 +200,24 @@ Fixpoint interpret {context} (values : Heterolist m.(modelType) context)
 | @univ _ type formula => forall x : m.(modelType) type,
                             interpret (x :: values) formula
 end.
+(* Interpret formula as a predicate on possible variable values. *)
+Definition interpret' {context} :=
+vararg_curry ∘ Coq.Program.Basics.flip (@interpret context).
+
+Example value_subst {context context'}
+                       (subst_values : Substitutions context context')
+                       (values : Heterolist m.(modelType) context')
+  [type] (term : Term context type)
+  : value values (term_subst subst_values term)
+    = value (Heterolist.map (value values) subst_values) term.
+induction term as [ind|? ? f args h_i] using @Term_ind'.
++ (* unfold term_subst; simpl. unfold value at 2; simpl. *)
+  symmetry; apply Heterolist.ref_map_eq_app_ref.
++ unfold term_subst, value at 1 2; repeat simpl;
+  fold (term_subst subst_values) (value values)
+       (value (Heterolist.map (value values) subst_values)).
+  rewrite Heterolist.map_map. f_equal. apply (Heterolist.map_equals h_i).
+Qed.
 
 End Interpretation.
 End Semantics.
@@ -204,14 +229,7 @@ Section defs.
 (* #[local] Notation "'Assumptions'" := (forall context, Formula context -> Type)
     (only parsing). *)
 (* Note: experimental. *)
-(* Level motivations:
-   - Standalone notations like [], 'Assumptions' above, etc. are at level 0.
-   - Since (Assumptions c) is a term, there's no reason to exclude it from
-     being parsed anywhere, so it should have level 0.
-   - `context` should at least bind tighter than ⊔, +, * so we can use such
-     type operations etc. *)
-#[local] Notation "'Assumptions' context" := (Formula context -> Type)
-    (at level 0, context at level 30, only parsing).
+Notation Assumptions context := (Formula context -> Type) (only parsing).
 
 (* Implicit Types assumptions Γ : Assumptions context. *)
 
@@ -232,7 +250,7 @@ End ForVariables.
 #[global] Arguments contradiction {types functions predicates context}.
 (* TODO reconsider this. functions actually can't be implicitly inferred
    except from the expected type, which may not be very reliable. *)
-#[global] Arguments predApp {types functions predicates context arity}.
+(* #[global] Arguments predApp {types functions predicates context arity}. *)
 
 
 Module FOLFormulaNotations.
@@ -267,61 +285,73 @@ Section Example.
    as well specify Set. *)
 Inductive types : Set := | _nat | _bool.
 Inductive functions : list types -> types -> Set :=
-| zero' : functions nil  _nat
-| succ' : functions (_nat::nil) _nat
-| leq' : functions (_nat::_nat::nil) _bool.
+| zero  : functions []           _nat
+| succ  : functions [_nat]       _nat
+| leq   : functions [_nat; _nat] _bool.
 Inductive relations : list types -> Set :=
-| eq_n' : relations (_nat :: _nat :: nil)
-| eq_b' : relations (_bool :: _bool :: nil).
+| eq_n : relations [_nat; _nat]
+| eq_b : relations [_bool; _bool].
 
-(* Ugly, but Coq doesn't unfold vararg_* properly otherwise. *)
-Let zero {context} := app (context := context) zero'.
-Let succ {context} := app (context := context) succ'.
-Let leq {context} := app (context := context) leq'.
-Let eq_n {context} := predApp (functions := functions) (context := context) eq_n'.
-Let eq_b {context} := predApp (functions := functions) (context := context) eq_b'.
+Notation app := (app (functions := functions)).
+Notation predApp := (@predApp _ functions relations).
 
-Let mysentence := univ
-                    (impl (predApp' eq_n' [var' Occ_head; app zero' : Term functions _ _])
-                      (impl (predApp' eq_n' [var' Occ_head; app succ' (app zero')])
+Check app zero.
+Check app leq (* : Term _ _ _nat -> Term _ _ _nat -> Term _ _ _bool *).
+Check predApp eq_n (* : ClosedTerm _ _nat -> ClosedTerm _ _nat -> Sentence _ _ *).
+
+Let mysentence := univ (type := _nat)
+                    (impl (predApp' eq_n [var' Occ_head; app zero])
+                      (impl (predApp' eq_n [var' Occ_head; app succ (app zero)])
                         contradiction)) : Sentence functions relations.
+(* Check eq_refl : mysentence
+                = univ (impl (predApp eq_n (var' Occ_head) (app zero))
+                        (impl (predApp eq_n (var' Occ_head) (app succ (app zero)))
+                        contradiction)). *)
 
+Import ListIndex (head, fromTail).
 (* The `(rest := nil)` specifies that `x` is the outermost variable*)
 Let sampleFormula (* {rest} *) :=
-let x := var' (Occ_tail (Occ_tail (Occ_head (rest := nil)))) in
-let y := var' (Occ_tail Occ_head) in
-let b := var' Occ_head in
-(impl (eq_b (leq x y) b)
-(impl (eq_b (leq y x) b)
-  (eq_n x y))).
+let context := [_bool; _nat; _nat]%list in
+let x : Term _ context _nat := var (fromTail (fromTail head)) in
+let y : Term _ context _nat := var (fromTail head) in
+let b : Term _ context _bool := var head in
+(impl (predApp eq_b (app leq x y) b)
+(impl (predApp eq_b (app leq y x) b)
+  (predApp eq_n x y))).
+Print sampleFormula.
 
 (* TODO: find and put implementation of actual Nat.leqb here *)
-Parameter leqb : nat -> nat -> bool.
+Fixpoint leqb (m n : nat) : bool := match m, n with
+| 0, _ => true | S _, 0 => false | S m, S n => leqb m n
+end. Arguments leqb : simpl nomatch.
+
 Definition standard_model : Model functions relations := {|
   modelType type := match type with | _nat => nat | _bool => bool end;
   modelFun _ _ f := match f in functions arity type
                             return vararg_function _ arity (_ type) with
-    | zero' => 0
-    | succ' => S
-    | leq'  => leqb
+    | zero => 0
+    | succ => S
+    | leq  => leqb
     end;
   modelPred _ r := match r in relations arity return vararg_predicate _ arity with
-    | eq_n' => @eq nat
-    | eq_b' => @eq bool
+    | eq_n => @eq nat
+    | eq_b => @eq bool
     end
 |}.
 
-Eval compute in interpret standard_model [] mysentence.
-Eval compute in interpret standard_model
-                          [false : standard_model.(modelType) _bool;
-                           0 : standard_model.(modelType) _nat;
-                           1 : standard_model.(modelType) _nat] sampleFormula.
-Eval compute in interpret standard_model []
+Compute interpret standard_model [] mysentence.
+Compute interpret standard_model
+            [false : standard_model.(modelType) _bool;
+             0 : standard_model.(modelType) _nat;
+             1 : standard_model.(modelType) _nat]
+            sampleFormula.
+Eval compute -[leqb] in interpret' standard_model sampleFormula.
+Compute interpret standard_model []
             (univ (univ (formula_subst
-                            (add1ContextToSubst [succ (var' Occ_head);
-                                                 var' Occ_head])
+                            (add1ContextToSubst [app succ (var head);
+                                                 var head])
                             sampleFormula))).
-Check (let subst_y_with_Sx := [succ (var' Occ_head); var' Occ_head] in
+Check (let subst_y_with_Sx := [app succ (var head); var head] in
       eq_refl : formula_subst subst_y_with_Sx (univ sampleFormula)
               = univ (formula_subst (add1ContextToSubst subst_y_with_Sx) sampleFormula)).
 
