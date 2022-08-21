@@ -284,14 +284,14 @@ Section Example.
 
 (* We could let these be automatically inferred (as Prop), but we might
    as well specify Set. *)
-Inductive types : Set := | _nat | _bool.
+Inductive types : Set := nat' | bool'.
 Inductive functions : list types -> types -> Set :=
-| zero  : functions []           _nat
-| succ  : functions [_nat]       _nat
-| leq   : functions [_nat; _nat] _bool.
+| zero  : functions []           nat'
+| succ  : functions [nat']       nat'
+| leq   : functions [nat'; nat'] bool'.
 Inductive relations : list types -> Set :=
-| eq_n : relations [_nat; _nat]
-| eq_b : relations [_bool; _bool].
+| eq_n : relations [nat'; nat']
+| eq_b : relations [bool'; bool'].
 
 Notation Term := (Term functions).
 Notation ClosedTerm := (ClosedTerm functions).
@@ -302,7 +302,7 @@ Check app zero.
 Check app leq.
 Check predApp eq_n.
 
-Let mysentence := univ (type := _nat)
+Let mysentence := univ (type := nat')
                     (impl (predApp' eq_n [var' Occ_head; app zero])
                       (impl (predApp' eq_n [var' Occ_head; app succ (app zero)])
                         contradiction)) : Sentence.
@@ -314,8 +314,8 @@ Succeed Check eq_refl :
 mysentence = ∀' predApp eq_n (var head) (app zero)
                 ->' ¬predApp eq_n (var head) (app succ (app zero)).
 
-(* The above expression could be in any context starting with
-   `[_bool; _nat; _nat; ...]`. We need to specify the type only so that
+(* The expression could be in any context starting with
+   `[bool'; nat'; nat'; ...]`. We need to specify the type only so that
    Coq knows the context to use (and even there, only the length of the
    context is needed).
    Alternatively, it's enough to specify it in the types of any one of
@@ -334,14 +334,15 @@ Fixpoint leqb (m n : nat) : bool := match m, n with
 end. Arguments leqb : simpl nomatch.
 
 Definition standard_model : Model functions relations := {|
-  modelType type := match type with | _nat => nat | _bool => bool end;
+  modelType type := match type with | nat' => nat | bool' => bool end;
   modelFun _ _ f := match f in functions arity type
                             return vararg_function _ arity (_ type) with
     | zero => 0
     | succ => S
     | leq  => leqb
     end;
-  modelPred _ r := match r in relations arity return vararg_predicate _ arity with
+  modelPred _ r := match r in relations arity
+                           return vararg_predicate _ arity with
     | eq_n => @eq nat
     | eq_b => @eq bool
     end
@@ -365,7 +366,7 @@ end) : core. *)
    Notice how just supplying the `?a :types` is enough, it knows the
    rest.
    Simply interchanging the arguments can also solve this problem. *)
-Compute interpret standard_model [false : _ _bool; 0 : _ _nat; 1 : _ _nat]
+Compute interpret standard_model [false : _ bool'; 0 : _ nat'; 1 : _ nat']
                                  sampleFormula.
 (* Curried version of the last example. Also avoids the problem. *)
 Eval compute -[leqb] in interpret' standard_model sampleFormula.
