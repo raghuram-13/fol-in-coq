@@ -86,6 +86,13 @@ Inductive Formula | context :=
 Definition predApp {context arity} : forall predicate : predicates arity,
   vararg_function (Term context) arity (Formula context) :=
 vararg_curry ∘ predApp'.
+(* This is necessary because of certain type inference issues:
+   the `functions` argument can only be inferred from the `vararg_curry`
+   arguments, which could be difficult (although I don't understand
+   exactly why this causes a problem).
+   In particular, this is not necessary so far for `app`.
+   But consider using it anyway. *)
+#[global] Arguments predApp _ _ predicate &.
 
 Definition Sentence := Formula nil.
 
@@ -248,9 +255,9 @@ End ForVariables.
 #[global] Arguments var' {types functions context type}.
 #[global] Arguments var {types functions context}.
 #[global] Arguments contradiction {types functions predicates context}.
-(* TODO reconsider this. functions actually can't be implicitly inferred
-   except from the expected type, which may not be very reliable. *)
-(* #[global] Arguments predApp {types functions predicates context arity}. *)
+(* Note: keep in mind that `functions` cannot be inferred until seeing
+   the `vararg_curry` arguments, which may make it difficult to infer. *)
+#[global] Arguments predApp {types functions predicates context arity}.
 
 
 Module FOLFormulaNotations.
@@ -296,12 +303,10 @@ Notation Term := (Term functions).
 Notation ClosedTerm := (ClosedTerm functions).
 Notation Formula := (Formula functions relations).
 Notation Sentence := (Sentence functions relations).
-Notation app := (app (functions := functions)).
-Notation predApp := (@predApp _ functions relations).
 
 Check app zero.
-Check app leq (* : Term _ _ _nat -> Term _ _ _nat -> Term _ _ _bool *).
-Check predApp eq_n (* : ClosedTerm _ _nat -> ClosedTerm _ _nat -> Sentence _ _ *).
+Check app leq.
+Check predApp eq_n.
 
 Let mysentence := univ (type := _nat)
                     (impl (predApp' eq_n [var' Occ_head; app zero])
@@ -313,12 +318,18 @@ Let mysentence := univ (type := _nat)
                         contradiction)). *)
 
 Import ListIndex (head, fromTail).
-(* The `(rest := nil)` specifies that `x` is the outermost variable*)
-Let sampleFormula (* {rest} *) :=
-let context := [_bool; _nat; _nat]%list in
-let x : Term context _nat := var (fromTail (fromTail head)) in
-let y : Term context _nat := var (fromTail head) in
-let b : Term context _bool := var head in
+
+(* The above expression could be in any context starting with
+   `[_bool; _nat; _nat; ...]`. We need to specify the type only so that
+   Coq knows the context to use (and even there, only the length of the
+   context is needed).
+   Alternatively, it's enough to specify it in the types of any one of
+   `x`, `y`, `b` OR fix the implicit argument anywhere; or
+   `sampleFormula` can be parametrised on a `rest` argument. *)
+Let sampleFormula : Formula [_; _; _]%list :=
+let x := var (fromTail (fromTail head)) in
+let y := var (fromTail head) in
+let b := var head in
 (impl (predApp eq_b (app leq x y) b)
 (impl (predApp eq_b (app leq y x) b)
   (predApp eq_n x y))).
