@@ -88,6 +88,14 @@ End BNat.
 
 Definition ListIndex {A} := BNat ∘ List.length (A := A).
 
+(* Note: based on experience, it's often better for fixpoints to only
+   take arguments they actually induct on (via the equivalent of
+   `fun ... => fix ... := ...`). This allows beta reduction of
+   applications to those arguments even if the recursive arguments are
+   unsuitable for that.
+   Consider doing the same here, especially if facing errors using
+   `ListIndex_rect` to handle a subcase of a recursion on a nested
+   inductive type, etc. *)
 Fixpoint ListIndex_rect {A} {P : forall l : list A, ListIndex l -> Type}
     (zero : forall {a rest}, P (cons a rest) BNat_zero)
     (succ : forall {a rest ind}, P rest ind -> P (cons a rest) (BNat_succ ind))
@@ -224,6 +232,7 @@ Inductive Heterolist {A : Type} {motive : A -> Type} : list A -> Type :=
 | heteronil : Heterolist nil
 | heterocons {a rest} : motive a -> Heterolist rest -> Heterolist (cons a rest).
 #[global] Arguments Heterolist {A} motive _.
+#[global] Arguments heterocons _ _ &.
 
 Module Heterolist.
 
@@ -257,6 +266,27 @@ Inductive Forall {A motive} {P : forall {a : A}, motive a -> Prop}
                      {Pa : motive a -> Prop} {P}
   : Pa x -> Forall' P l' -> Forall' (Pa :: P) (x :: l'). *)
 
+Module Forall.
+
+Module Notation.
+  Notation "∀ x ∈ l , P" := (Forall (fun _ x => P) l)
+    (at level 100, x binder) : type_scope.
+  Notation "∀ [ t ] x ∈ l , P" := (Forall (fun t x => P) l)
+    (at level 100, t binder, x binder) : type_scope.
+End Notation.
+Import (notations) Notation.
+
+Section of_univ. Context {A motive} {P : forall [a : A], motive a -> Prop}
+                                    (f : forall [a] (x : motive a), P x).
+                 Arguments P [a]. Arguments f [a].
+Fixpoint of_univ {l'} (l : Heterolist motive l') : Forall P l := match l with
+| []        => Forall_nil
+| x :: rest => Forall_cons (f x) (of_univ rest)
+end.
+End of_univ.
+
+End Forall.
+
 Section ForVariables.
 Context {A : Type}. Implicit Type motive : A -> Type.
 
@@ -289,37 +319,49 @@ end.
 
 End Temp.
 
+Section Map.
+(* We put all unvaried arguments to these `Fixpoints` in the context as
+   section variables rather than parameters. This avoids Coq thinking
+   they might vary in recursive calls, which allows them to be used in
+   recursive definitions. *)
+
 (* Let's see how well this works. *)
 (* Problem: `List.map id l` and `l` are not definitionally equal.
    Hence we define a `map` below for when `B` is `A` and `f` is `id`. *)
-Fixpoint map' {A : Type} {motive1 : A -> Type} {B : Type} {motive2 : B -> Type}
-             [f : A -> B] (f' : forall [a], motive1 a -> motive2 (f a))
-  {l'} (l : Heterolist motive1 l') : Heterolist motive2 (List.map f l') :=
-match l with
+Section map'. Context {motive1} {B} {motive2 : B -> Type} [f : A -> B]
+                      (f' : forall [a], motive1 a -> motive2 (f a)).
+Arguments f' [a].
+Fixpoint map' {l'} (l : Heterolist motive1 l')
+  : Heterolist motive2 (List.map f l') :=
+match l in Heterolist _ l' return Heterolist motive2 (List.map f l') with
 | []        => []
-| a :: rest => f' a :: map' f' rest
+| a :: rest => f' a :: map' rest
 end.
+End map'.
 
-Fixpoint map {motive1 motive2} (f : forall [a], motive1 a -> motive2 a)
+Section map. Context {motive1 motive2} (f : forall [a], motive1 a -> motive2 a).
+Arguments f [a].
+Fixpoint map
   {l'} (l : Heterolist motive1 l') : Heterolist motive2 l' := match l with
 (* `List.map id` is not _definitionally_ `id`, and don't want to rewrite. *)
 (* map' f l' *)
 | []        => []
-| a :: rest => f a :: map f rest
+| a :: rest => f a :: map rest
 end.
+End map.
 
-Check map' (*motive1 := fun _ => nat*) (motive2 := id)
-            (fun _ (b : nat) => b).
-Fixpoint mapList {motive} l : (forall ind, motive (ListIndex.ref l ind))
+Section mapList. Context {motive}.
+Fixpoint mapList l : (forall ind, motive (ListIndex.ref l ind))
   -> Heterolist motive l := match l with
 | nil         => fun f => []
 | cons a rest => fun f => f BNat_zero :: mapList rest (fun n => f (BNat_succ n))
 end.
 
-Fixpoint mapList_occ {motive} l
+Fixpoint mapList_occ l
   : (forall {a}, Occ a l -> motive a) -> Heterolist motive l := match l with
 | nil         => fun f => []
-| cons a rest => fun f => f a Occ_head :: mapList rest (fun {a} o => f a (Occ_tail o))
+| cons _ rest => fun f : forall {a}, _ -> _ =>
+                   f Occ_head :: mapList_occ rest (fun _ o => f (Occ_tail o))
 end.
 End mapList.
 
@@ -350,9 +392,10 @@ induction ind as [|?? ind h_i] using @ListIndex_rect; [
 ].
 Qed.
 
+Import (notations) Forall.Notation.
 Lemma map_equals {f g : forall [a], motive1 a -> motive2 a}
                  {l'} {l : Heterolist motive1 l'}
-  (h : Forall (fun _ x => f x = g x) l) : map f l = map g l.
+  (h : ∀ x ∈ l, f x = g x) : map f l = map g l.
 induction h as [|???? h _ h_i]; [
   reflexivity
 | simpl; f_equal; [ exact h | exact h_i ]
@@ -369,31 +412,36 @@ Section Functions.
 
 Section Vararg. Context {A : Type} (motive : A -> Type).
 
-Fixpoint vararg_function (l : list A) (B : Type) : Type :=
-match l with
+Definition vararg_function : list A -> Type -> Type := flip (fun B =>
+fix vararg_function l := match l with
 | nil         => B
-| cons a rest => motive a -> vararg_function rest B
-end.
+| cons a rest => motive a -> vararg_function rest
+end).
+#[global] Arguments vararg_function l B /.
 
 Definition vararg_predicate (l : list A) :=
 vararg_function l Prop.
 
-Fixpoint vararg_apply {l B} (f : vararg_function l B)
-                            (args : Heterolist motive l) : B :=
+Section vararg_apply. Context {B : Type}.
+Fixpoint vararg_apply {l} (f : vararg_function l B) (args : Heterolist motive l)
+  : B :=
 (* We need f effectively unapplied so its type changes with `args`. *)
 match args in Heterolist _ l return vararg_function l B -> B with
 | heteronil           => id
 | heterocons arg rest => fun f => vararg_apply (f arg) rest
 end f.
+End vararg_apply.
 
-Fixpoint vararg_curry {l B} : (Heterolist motive l -> B) -> vararg_function l B :=
+Section vararg_curry. Context {B : Type}.
+Fixpoint vararg_curry {l} : (Heterolist motive l -> B) -> vararg_function l B :=
 match l with
 | nil         => fun f => f heteronil
 | cons a rest => fun f arg => vararg_curry (fun rest => f (heterocons arg rest))
 end.
+End vararg_curry.
 
 End Vararg.
 #[global] Arguments vararg_apply {_ motive _ _}.
-#[global] Arguments vararg_curry {_ motive _ _}.
+#[global] Arguments vararg_curry {_ motive _ _} f &.
 
 End Functions.
