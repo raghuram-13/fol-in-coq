@@ -16,14 +16,16 @@ Implicit Types (type : types) (context arity : list types).
 
 Section Syntax.
 
-Inductive Term context | type :=
-| var' (_ : Occ type context)
-| app' {arity} (function : functions arity type) (args : Heterolist Term arity).
+Inductive Term context | : types -> Type :=
+| var (ind : ListIndex context) : Term (ListIndex.ref context ind)
+| app' {type arity} (function : functions arity type)
+                    (args : Heterolist Term arity) : Term type.
 
-Section var. Context {context} (ind : BNat (List.length context)).
-Definition varType : types := List_bnatRef context ind.
-Definition var : Term context varType := var' (Occ.fromBNat context ind).
-End var.
+Section var'. Context {context type} (occ : Occ type context).
+Import (notations) EqNotations.
+Definition var' : Term context type :=
+rew [Term context] Occ.ref_toIndex occ in var (Occ.toIndex occ).
+End var'.
 
 Definition app {context type arity} : forall function : functions arity type,
   vararg_function (Term context) arity (Term context type) :=
@@ -39,7 +41,7 @@ Fixpoint Term_rect' {context} {P : types -> Type}
     (app' : forall [type arity] (f : functions arity type)
                                 (args : Heterolist (Term context) arity),
                                 Heterolist P arity -> P type)
-  {type} (term : Term context type) : P type := match term with
+  [type] (term : Term context type) : P type := match term with
 | var' occ    => var' occ
 | app' f args =>
   app' f args ((fix ListTerm_rect' {l} args :=
@@ -58,7 +60,7 @@ Fixpoint Term_ind' {context} {P : forall [type], Term context type -> Prop}
     (app' : forall [type arity] (f : functions arity type)
                                 (args : Heterolist (Term context) arity),
                                 Heterolist.Forall P args -> P (app' f args))
-  {type} (term : Term context type) : P term := match term with
+  [type] (term : Term context type) : P term := match term with
 | var' occ    => var' occ
 | app' f args =>
   app' f args ((fix mapForall {l} args :=
@@ -104,9 +106,12 @@ Section Substitution.
 (* A list of values for the `context'` which must be valid in `context`. *)
 Definition Substitutions context context' := Heterolist (Term context') context.
 
+Import (notations) EqNotations.
 Definition addContext extraContext {context}
-  [type] : Term context type -> Term (extraContext ++ context) type :=
-Term_rect' (fun _ occ => var' (Occ.addBefore extraContext occ))
+  : forall [type], Term context type -> Term (extraContext ++ context) type :=
+Term_rect' (P := fun type => Term (extraContext ++ context) type)
+           (fun ind => rew ListIndex.ref_addBefore _ _ in
+                       var (ListIndex.addBefore extraContext ind))
            (fun _ _ f _ args' => app' f args').
 
 (* Constructing `Value`s to use in substitutions. *)
@@ -123,18 +128,18 @@ Heterolist.mapList context (fun _ o => var' o).
 Definition add1ContextToSubst {type context context'}
   (values : Substitutions context context')
   : Substitutions (type :: context) (type :: context') :=
-var' Occ_head :: Heterolist.map (addContext [type]) values.
+var ListIndex.head :: Heterolist.map (addContext [type]) values.
 
 
 Section TermSubst.
 Context {context context'} (values : Substitutions context context').
 
-Definition term_subst [type] : Term context type -> Term context' type :=
+Definition term_subst : forall [type], Term context type -> Term context' type :=
 (* match term with
 | var o      => Array.ref o values
 | app' f args => app' f (Array.map term_subst args)
 end. *)
-Term_rect' (fun _ occ => Heterolist.ref' occ values)
+Term_rect' (fun ind => Heterolist.ref ind values)
            (fun _ _ f _ args' => app' f args').
 End TermSubst.
 
@@ -173,8 +178,8 @@ Section Interpretation.
 Set Strict Implicit. Context (m : Model).
 
 Definition value {context} (values : Heterolist m.(modelType) context)
-  [type] : Term context type -> m.(modelType) type :=
-Term_rect' (fun _ occ => Heterolist.ref' occ values)
+  : forall [type], Term context type -> m.(modelType) type :=
+Term_rect' (fun ind => Heterolist.ref ind values)
            (fun _ _ f _ args' => vararg_apply (m.(modelFun) f) args').
 
 (* Can't use context, values section variables because values has to

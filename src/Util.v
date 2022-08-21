@@ -39,6 +39,16 @@ destruct b1, b2; intuition. Qed.
 
 End Is_true.
 
+Section Equality.
+Import (notations) EqNotations.
+
+Theorem rew_app {A : Type} {P Q : A -> Type} (f : forall {a}, P a -> Q a)
+                {a1 a2} (h : a1 = a2) (x : P a1)
+  : rew h in f x = f (rew h in x). exact
+(match h with eq_refl => eq_refl end). Qed.
+
+End Equality.
+
 
 
 (* Bounded natural numbers. *)
@@ -48,7 +58,9 @@ Inductive BNat : nat -> Set :=
 
 Module BNat.
 
-Lemma no_bnat_zero : BNat 0 -> False. exact (fun a => match a with end). Qed.
+Definition elim_bnat_zero {P : BNat 0 -> Type} (n : BNat 0) : P n :=
+match n with end.
+Lemma no_bnat_zero : BNat 0 -> False. exact elim_bnat_zero. Qed.
 
 (* Better to define functions when Coq's pattern-matching is so difficult. *)
 Section Pred. Context {n} (a : BNat (S n)).
@@ -74,11 +86,76 @@ End Cases.
 
 End BNat.
 
-Fixpoint List_bnatRef {A} (l : list A) : BNat (List.length l) -> A :=
-match l with
-| nil => False_rect _ ∘ BNat.no_bnat_zero
-| cons a l => BNat.cases a (List_bnatRef l)
+Definition ListIndex {A} := BNat ∘ List.length (A := A).
+
+Fixpoint ListIndex_rect {A} {P : forall l : list A, ListIndex l -> Type}
+    (zero : forall {a rest}, P (cons a rest) BNat_zero)
+    (succ : forall {a rest ind}, P rest ind -> P (cons a rest) (BNat_succ ind))
+  [l] : forall ind, P l ind := match l with
+| nil         => BNat.elim_bnat_zero
+| cons a rest => BNat.cases zero (fun ind =>
+                                   succ (ListIndex_rect (@zero) (@succ) ind))
 end.
+Arguments ListIndex_rect _ _ &.
+
+Module ListIndex.
+
+(* Better type inference *)
+Section PseudoConstructors. Context {A} {a : A} {l : list A}.
+Definition head : ListIndex (a::l) := BNat_zero.
+Definition fromTail : ListIndex l -> ListIndex (a::l) := BNat_succ.
+End PseudoConstructors.
+
+Definition ref {A} : forall (l : list A), ListIndex l -> A :=
+(* match l with
+| nil      => BNat.elim_bnat_zero
+| cons a l => BNat.cases a (ref l)
+end *)
+ListIndex_rect (fun a _ => a) (fun _ _ _ rec => rec).
+
+Section Add. Context {A : Type}. Implicit Type l : list A.
+Fixpoint addBefore l1 {l2} : ListIndex l2 -> ListIndex (l1 ++ l2) :=
+match l1 with
+| nil         => id
+| cons a rest => fromTail ∘ addBefore rest
+end.
+(* Import (notations) EqNotations.
+Definition addBefore' l1 {l2} : ListIndex l2 -> ListIndex (l1 ++ l2) :=
+rew <- [fun length => ListIndex l2 -> BNat length] (List.app_length l1 l2) in
+BNat.addBefore (List.length l1) (n := List.length l2). *)
+
+Definition addAfter l1 : forall {l2}, ListIndex l2 -> ListIndex (l2 ++ l1) :=
+(* match l2 with
+| nil         => False_rect _ ∘ BNat.no_bnat_zero
+| cons a rest => BNat.cases BNat_zero (BNat_succ ∘ addAfter l1)
+end *)
+ListIndex_rect (fun _ _ => head) (fun _ _ _ rec => fromTail rec).
+
+Section AddRefLemmas. Import (notations) EqNotations.
+
+(* Lesson: ALWAYS define an equality you might rewrite using with `Defined`
+   so it is transparent to at least the type-checker for definitional
+   equality-checking of terms rewriting using it,
+   unless assuming proof irrelevance/working in `SProp`.
+
+   Although this may not be enough if a theorem you want to prove is
+   not provable without proof irrelevance.  *)
+Lemma ref_addBefore l1 {l2} (ind : ListIndex l2)
+  : ref (l1 ++ l2) (addBefore l1 ind) = ref l2 ind.
+induction l1 as [|a rest h_i]; [ reflexivity | exact h_i ].
+Defined.
+
+Lemma ref_addAfter l1 {l2} (ind : ListIndex l2)
+  : ref (l2 ++ l1) (addAfter l1 ind) = ref l2 ind.
+induction ind as [|??? rec] using @ListIndex_rect; [ reflexivity | exact rec ].
+Defined.
+
+#[global] Opaque ref_addBefore ref_addAfter.
+End AddRefLemmas.
+
+End Add.
+
+End ListIndex.
 
 (* Occurrences of an element in a list. *)
 Inductive Occ {A : Type} : A -> list A -> Type :=
@@ -100,16 +177,42 @@ match occ with
 | Occ_tail occ => Occ_tail (addAfter l1 occ)
 end.
 
-Fixpoint toBNat {a l} (occ : Occ a l) : BNat (List.length l) := match occ with
-| Occ_head     => BNat_zero
-| Occ_tail occ => BNat_succ (toBNat occ)
+Fixpoint toIndex {a l} (occ : Occ a l) : ListIndex l := match occ with
+| Occ_head     => ListIndex.head
+| Occ_tail occ => ListIndex.fromTail (toIndex occ)
 end.
 
-Fixpoint fromBNat l : forall n : BNat (List.length l),
-                        Occ (List_bnatRef l n) l := match l with
-| nil      => (* dependent comp *) fun n => False_rect _ (BNat.no_bnat_zero n)
-| cons a l => BNat.cases Occ_head (fun n => Occ_tail (fromBNat l n))
-end.
+Definition fromIndex : forall l (ind : ListIndex l),
+  Occ (ListIndex.ref l ind) l :=
+(* match l with
+| nil      => BNat.elim_bnat_zero
+| cons a l => BNat.cases Occ_head (fun n => Occ_tail (fromIndex l n))
+end *)
+ListIndex_rect (fun _ _ => Occ_head) (fun _ _ _ rec => Occ_tail rec).
+
+Section OccBNatLemmas. Import (notations) EqNotations.
+
+Lemma ref_toIndex {a l} (occ : Occ a l) : ListIndex.ref l (toIndex occ) = a.
+(* `h_i` takes an argument unnecessarily and I don't know why.
+     induction occ as [|? ? ? occ' h_i]
+   So I'm doing the induction manually. *)
+revert a l occ; apply Occ_ind; [intros ? ?|intros ? ? ? occ h_i];
+[ reflexivity | exact h_i ].
+Defined. (* Transparent because we need it to prove things about it in Coq. *)
+
+Lemma from_toIndex {a l} (occ : Occ a l)
+  : rew [fun a => Occ a l] ref_toIndex occ in fromIndex l (toIndex occ) = occ.
+induction occ.
++ reflexivity.
++ simpl.
+  unfold fromIndex; simpl; unfold BNat.cases; simpl;
+  fold (fromIndex rest (toIndex occ)).
+  rewrite rew_app with (f := fun a => Occ_tail (a := a)).
+  f_equal; assumption.
+Qed.
+
+#[global] Opaque ref_toIndex.
+End OccBNatLemmas.
 
 End ForVariables.
 End Occ.
@@ -139,20 +242,23 @@ Module Notation.
 End Notation.
 Import (notations) Notation. #[local] Open Scope heterolist.
 
+Inductive Forall {A motive} {P : forall {a : A}, motive a -> Prop}
+  : forall {l}, Heterolist motive l -> Prop :=
+| Forall_nil : Forall []
+| Forall_cons {a l} {x : motive a} {l' : Heterolist motive l}
+  : P x -> Forall l' -> Forall (x :: l').
+#[global] Arguments Forall {A motive} P {_} _.
+
+(* Inductive Forall' {A motive}
+  : forall {l} (P : Heterolist (fun a : A => motive a -> Prop) l),
+      Heterolist motive l -> Prop :=
+| Forall'_nil : Forall' [] []
+| Forall'_cons {a l} {x : motive a} {l' : Heterolist motive l}
+                     {Pa : motive a -> Prop} {P}
+  : Pa x -> Forall' P l' -> Forall' (Pa :: P) (x :: l'). *)
+
 Section ForVariables.
 Context {A : Type}. Implicit Type motive : A -> Type.
-
-Section Rect.
-
-Inductive Forall {motive} {P : forall [a], motive a -> Prop}
-  : forall {l}, Heterolist motive l -> Prop :=
-| Forall_nil : Forall heteronil
-| Forall_cons {a l} {x : motive a} {l' : Heterolist motive l}
-    : P x -> Forall l' -> Forall (x :: l').
-#[global] Arguments Forall : clear implicits.
-#[global] Arguments Forall {motive} P {_} _.
-
-End Rect.
 
 Section Temp. Context {motive}.
 Definition first {a l} : Heterolist motive (a :: l) -> motive a :=
@@ -160,16 +266,19 @@ fun '(a :: _) => a.
 Definition rest {a l} : Heterolist motive (a :: l) -> Heterolist motive l :=
 fun '(_ :: l) => l.
 
-Section Ref. Import (notations) EqNotations.
+Section Ref.
+
 (* Keep only the list as a parameter to ensure the `BNat` type gets rewritten
    when matching against it. *)
-Fixpoint ref {l} : forall n : BNat (List.length l), Heterolist motive l
-  -> motive (List_bnatRef l n) := match l with
+Definition ref : forall {l} (ind : ListIndex l), Heterolist motive l
+  -> motive (ListIndex.ref l ind) :=
+(* match l with
 | nil      => (* dependent comp *) fun n => False_rect _ (BNat.no_bnat_zero n)
-| cons a l => BNat.cases (P := fun n => Heterolist motive (a::l) -> motive (List_bnatRef (a::l) n))
+| cons a l => BNat.cases (P := fun n => Heterolist motive (a::l) -> motive (ListIndex.ref (a::l) n))
                 first
                 (fun n => fun l => ref n (rest l))
-end.
+end *)
+ListIndex_rect (fun _ _ => first) (fun _ _ _ rec => rec ∘ rest).
 End Ref.
 
 Fixpoint ref' {a l} (occ : Occ a l) : Heterolist motive l -> motive a :=
@@ -201,12 +310,55 @@ end.
 
 Check map' (*motive1 := fun _ => nat*) (motive2 := id)
             (fun _ (b : nat) => b).
+Fixpoint mapList {motive} l : (forall ind, motive (ListIndex.ref l ind))
+  -> Heterolist motive l := match l with
+| nil         => fun f => []
+| cons a rest => fun f => f BNat_zero :: mapList rest (fun n => f (BNat_succ n))
+end.
 
-Fixpoint mapList {motive} l
+Fixpoint mapList_occ {motive} l
   : (forall {a}, Occ a l -> motive a) -> Heterolist motive l := match l with
 | nil         => fun f => []
 | cons a rest => fun f => f a Occ_head :: mapList rest (fun {a} o => f a (Occ_tail o))
 end.
+End mapList.
+
+Section MapLemmas. Context {motive1 motive2 motive3}.
+
+Lemma map_mapList {l}
+    (f : forall n, motive1 (ListIndex.ref l n))
+    (g : forall [a], motive1 a -> motive2 a)
+  : map g (mapList l f) = mapList l (fun n => g (f n)).
+induction l as [|?? h_i]; [ reflexivity | simpl; f_equal; apply h_i ].
+Qed.
+
+Lemma map_map (f : forall [a], motive1 a -> motive2 a)
+              (g : forall [a], motive2 a -> motive3 a)
+  : forall {l'} (l : Heterolist motive1 l'),
+    map g (map f l) = map (fun a => @g a ∘ @f a) l.
+induction l as [|???? h_i]; [ reflexivity | simpl; f_equal; exact h_i ].
+Qed.
+
+Lemma ref_map_eq_app_ref (f : forall [a], motive1 a -> motive2 a)
+                         {l'} (l : Heterolist motive1 l') (ind : ListIndex l')
+  : ref ind (map f l) = f (ref ind l).
+induction ind as [|?? ind h_i] using @ListIndex_rect; [
+  exact (match l with | _ :: _ => eq_refl end)
+| replace l with (first l :: rest l) by
+    exact (match l with | _ :: _ => eq_refl end);
+  f_equal; exact (h_i (rest l))
+].
+Qed.
+
+Lemma map_equals {f g : forall [a], motive1 a -> motive2 a}
+                 {l'} {l : Heterolist motive1 l'}
+  (h : Forall (fun _ x => f x = g x) l) : map f l = map g l.
+induction h as [|???? h _ h_i]; [
+  reflexivity
+| simpl; f_equal; [ exact h | exact h_i ]
+]. Qed.
+
+End MapLemmas. End Map.
 
 End ForVariables.
 End Heterolist.
