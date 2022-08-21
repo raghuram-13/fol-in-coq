@@ -16,10 +16,12 @@ Implicit Types (type : types) (context arity : list types).
 
 Section Syntax.
 
+Section TermDef. #[local] Unset Elimination Schemes.
 Inductive Term context | : types -> Type :=
 | var (ind : ListIndex context) : Term (ListIndex.ref context ind)
 | app' {type arity} (function : functions arity type)
                     (args : Heterolist Term arity) : Term type.
+End TermDef.
 
 Section var'. Context {context type} (occ : Occ type context).
 Import (notations) EqNotations.
@@ -33,24 +35,7 @@ vararg_curry ∘ app'.
 
 Definition ClosedTerm := Term nil.
 
-Section Term_rect'. #[local] Unset Implicit Arguments.
-(* This comes with motive not depending on the `Term` itself because it
-   gets into heterogenous lists depending on two parameters (using
-   things like homogenize) and that gets overly complicated quickly. *)
-Context {context} {P : types -> Type}
-    (var_case : forall (ind : ListIndex context), P (ListIndex.ref context ind))
-    (app'_case : forall [type arity] (f : functions arity type)
-                                     (args : Heterolist (Term context) arity),
-                   Heterolist P arity -> P type).
-Arguments app'_case [type arity].
-
-Fixpoint Term_rect' [type] (term : Term context type) := match term with
-| var ind     => var_case ind
-| app' f args => app'_case f args (Heterolist.map Term_rect' args)
-end.
-End Term_rect'.
-
-Section Term_ind'. #[local] Unset Implicit Arguments.
+Section Term_ind. #[local] Unset Implicit Arguments.
 (* Consider "doubly heterogenous" lists worth it for inductive *proofs*. *)
 (* We could have gone through this for `rect` too, but chose to not
    define an analogue of `Forall` for types.  (Note that this would have
@@ -62,12 +47,12 @@ Context {context} {P : forall [type], Term context type -> Prop}
                    Heterolist.Forall P args -> P (app' f args)).
 Arguments P [type]. Arguments app'_case [type arity].
 
-Fixpoint Term_ind' [type] (term : Term context type) := match term with
+Fixpoint Term_ind [type] (term : Term context type) := match term with
 | var ind     => var_case ind
-| app' f args => app'_case f args (Heterolist.Forall.of_univ Term_ind' args)
+| app' f args => app'_case f args (Heterolist.Forall.of_univ Term_ind args)
 end.
 
-End Term_ind'.
+End Term_ind.
 
 (* Note: this has unnecessary repetition in that it repeats the
    operations of propositional logic and this might force us to redo
@@ -111,13 +96,15 @@ Section Substitution.
 (* A list of values for the `context'` which must be valid in `context`. *)
 Definition Substitutions context context' := Heterolist (Term context') context.
 
-Import (notations) EqNotations.
-Definition addContext extraContext {context}
-  : forall [type], Term context type -> Term (extraContext ++ context) type :=
-Term_rect' (P := fun type => Term (extraContext ++ context) type)
-           (fun ind => rew ListIndex.ref_addBefore _ _ in
-                       var (ListIndex.addBefore extraContext ind))
-           (fun _ _ f _ args' => app' f args').
+Section addContext. Import (notations) EqNotations.
+Context (extraContext : list types) {context}.
+Fixpoint addContext [type] (term : Term context type)
+  : Term (extraContext ++ context) type := match term with
+| var ind => rew ListIndex.ref_addBefore _ _ in
+             var (ListIndex.addBefore extraContext ind)
+| app' f args => app' f (Heterolist.map addContext args)
+end.
+End addContext.
 
 (* Constructing `Value`s to use in substitutions. *)
 Definition id_values {context} : Substitutions context context :=
@@ -145,9 +132,12 @@ Qed.
 Section TermSubst.
 Context {context context'} (values : Substitutions context context').
 
-Definition term_subst : forall [type], Term context type -> Term context' type :=
-Term_rect' (fun ind => Heterolist.ref ind values)
-           (fun _ _ f _ args' => app' f args').
+Fixpoint term_subst [type] (term : Term context type) : Term context' type :=
+match term with
+| var ind      => Heterolist.ref ind values
+| app' f args => app' f (Heterolist.map term_subst args)
+end.
+
 End TermSubst.
 
 (* This now works pretty much exactly like
@@ -184,10 +174,14 @@ Structure Model := {
 Section Interpretation.
 Set Strict Implicit. Context (m : Model).
 
-Definition evaluate'' {context} (values : Heterolist m.(modelType) context)
-  : forall [type], Term context type -> m.(modelType) type :=
-Term_rect' (fun ind => Heterolist.ref ind values)
-           (fun _ _ f _ args' => vararg_apply (m.(modelFun) f) args').
+Section evaluate.
+Context {context} (values : Heterolist m.(modelType) context).
+Fixpoint evaluate'' [type] (term : Term context type) : m.(modelType) type :=
+match term with
+| var ind     => Heterolist.ref ind values
+| app' f args => vararg_apply (m.(modelFun) f) (Heterolist.map evaluate'' args)
+end.
+End evaluate.
 
 (* Can't use context, values section variables because values has to
    vary in the recursive calls. *)
@@ -219,7 +213,7 @@ Example evaluate_subst {context context'}
   [type] (term : Term context type)
   : evaluate'' values (term_subst subst_values term)
     = evaluate'' (Heterolist.map (evaluate'' values) subst_values) term.
-induction term as [ind|? ? f args h_i] using @Term_ind'.
+induction term as [ind|? ? f args h_i].
 + (* unfold term_subst; simpl. unfold evaluate at 2; simpl. *)
   symmetry; apply Heterolist.ref_map_eq_app_ref.
 + unfold term_subst, evaluate'' at 1 2; repeat simpl;
