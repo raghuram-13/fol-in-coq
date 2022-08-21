@@ -113,14 +113,14 @@ Term_rect' (P := fun type => Term (extraContext ++ context) type)
            (fun _ _ f _ args' => app' f args').
 
 (* Constructing `Value`s to use in substitutions. *)
-Definition value_id {context} : Substitutions context context :=
-Heterolist.mapList context (fun _ o => var' o).
+Definition id_values {context} : Substitutions context context :=
+Heterolist.mapList context var.
 
 (* TODO generalise this to adding multiple types like addContext? *)
 (* Transforms a substitution to an equivalent one in a context with one
    more variable of type `type`.
    This is achieved by incrementing the de Bruijn indexes of the terms
-   to substitute (achieved by `Heterolist.map (addContext _)`) and
+   to substitute (achieved by `Heterolist.map (addContext [type])`) and
    adding an identity substitution at the front (achieved by
    `var' Occ_head ::`). *)
 Definition add1ContextToSubst {type context context'}
@@ -129,9 +129,9 @@ Definition add1ContextToSubst {type context context'}
 var ListIndex.head :: Heterolist.map (addContext [type]) values.
 
 
-Lemma addContext_to_value_id {type context}
-  : add1ContextToSubst value_id = @value_id (type :: context).
-unfold add1ContextToSubst, value_id at 2; simpl; f_equal.
+Lemma addContext_to_id_subst {type context}
+  : add1ContextToSubst id_values = @id_values (type :: context).
+unfold add1ContextToSubst, id_values at 2; simpl; f_equal.
 apply Heterolist.map_mapList.
 Qed.
 
@@ -181,20 +181,20 @@ Structure Model := {
 Section Interpretation.
 Set Strict Implicit. Context (m : Model).
 
-Definition value {context} (values : Heterolist m.(modelType) context)
+Definition evaluate {context} (values : Heterolist m.(modelType) context)
   : forall [type], Term context type -> m.(modelType) type :=
 Term_rect' (fun ind => Heterolist.ref ind values)
            (fun _ _ f _ args' => vararg_apply (m.(modelFun) f) args').
-(* `value` of a term as a function from variable values to value. *)
-Definition value' {context} {type} (term : Term context type) :=
-vararg_curry (fun values => value values term).
+(* Evaluate term to a function from variable values to value. *)
+Definition evaluate' {context} {type} (term : Term context type) :=
+vararg_curry (fun values => evaluate values term).
 
 (* Can't use context, values section variables because values has to
    vary in the recursive calls. *)
 Fixpoint interpret {context} (values : Heterolist m.(modelType) context)
   (formula : Formula context) : Prop := match formula with
 | predApp' r args      => vararg_apply (m.(modelPred) r)
-                            (Heterolist.map (value values) args)
+                            (Heterolist.map (evaluate values) args)
 | contradiction        => False
 | impl p q             => interpret values p -> interpret values q
 | @univ _ type formula => forall x : m.(modelType) type,
@@ -204,18 +204,18 @@ end.
 Definition interpret' {context} :=
 vararg_curry ∘ Coq.Program.Basics.flip (@interpret context).
 
-Example value_subst {context context'}
+Example evaluate_subst {context context'}
                        (subst_values : Substitutions context context')
                        (values : Heterolist m.(modelType) context')
   [type] (term : Term context type)
-  : value values (term_subst subst_values term)
-    = value (Heterolist.map (value values) subst_values) term.
+  : evaluate values (term_subst subst_values term)
+    = evaluate (Heterolist.map (evaluate values) subst_values) term.
 induction term as [ind|? ? f args h_i] using @Term_ind'.
-+ (* unfold term_subst; simpl. unfold value at 2; simpl. *)
++ (* unfold term_subst; simpl. unfold evaluate at 2; simpl. *)
   symmetry; apply Heterolist.ref_map_eq_app_ref.
-+ unfold term_subst, value at 1 2; repeat simpl;
-  fold (term_subst subst_values) (value values)
-       (value (Heterolist.map (value values) subst_values)).
++ unfold term_subst, evaluate at 1 2; repeat simpl;
+  fold (term_subst subst_values) (evaluate values)
+       (evaluate (Heterolist.map (evaluate values) subst_values)).
   rewrite Heterolist.map_map. f_equal. apply (Heterolist.map_equals h_i).
 Qed.
 
