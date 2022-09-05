@@ -141,7 +141,6 @@ end.
 End TermSubst.
 
 (* This now works pretty much exactly like
-   (* _Completeness theorems for first-order logic, analysed in constructive type theory_ *)
    _Formalized First-Order Logic_ by Andreas Halkjær (Section 5.1.2)
    and other sources.
    Recursion except through quantifiers (or anything that changes the
@@ -231,8 +230,6 @@ Section defs.
 
 (* Note: experimental. *)
 Notation Assumptions context := (Formula context -> Type) (only parsing).
-
-(* Implicit Types assumptions Γ : Assumptions context. *)
 
 (* We define proofs in a context of free variables, with a set of
    assumptions that is allowed to refer to the variables. So proofs of
