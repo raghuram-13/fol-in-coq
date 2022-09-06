@@ -6,16 +6,21 @@ Import (notations) Coq.Lists.List.ListNotations.
 Require Import Util. Import (notations) Util.Heterolist.Notation.
 #[local] Open Scope heterolist. (* for `match` patterns *)
 
-Section ForVariables.
 (* The signature of a particular FOL.
    (We are building many-sorted FOL.) *)
-Variable (types : Type) (functions : list types -> types -> Type)
-                        (predicates : list types -> Type).
+Module Type Signature.
+  Parameter (types : Type) (functions : list types -> types -> Type)
+                           (predicates : list types -> Type).
+End Signature.
+
+(* Implicit Types (type : types) (context arity : list types). *)
+
+Module Syntax (sig : Signature). Import sig.
 
 Implicit Types (type : types) (context arity : list types).
 
-Section Syntax.
-
+(* Coq does not generate useful schemes for this nested inductive type.
+   We mostly just use fix and match instead. *)
 Section TermDef. #[local] Unset Elimination Schemes.
 Inductive Term context | : types -> Type :=
 | var (ind : ListIndex context) : Term (ListIndex.ref context ind)
@@ -23,8 +28,8 @@ Inductive Term context | : types -> Type :=
                     (args : Heterolist Term arity) : Term type.
 End TermDef.
 
-Section var'. Context {context type} (occ : Occ type context).
-Import (notations) EqNotations.
+Section var'. Import (notations) EqNotations.
+Context {context type} (occ : Occ type context).
 Definition var' : Term context type :=
 rew [Term context] Occ.ref_toIndex occ in var (Occ.toIndex occ).
 End var'.
@@ -39,7 +44,7 @@ Section Term_ind. #[local] Unset Implicit Arguments.
 (* Consider "doubly heterogenous" lists worth it for inductive *proofs*. *)
 (* We could have gone through this for `rect` too, but chose to not
    define an analogue of `Forall` for types.  (Note that this would have
-   to be a separate inductive definition.) *)
+   had to be to be a separate inductive definition.) *)
 Context {context} {P : forall [type], Term context type -> Prop}
     (var_case : forall (ind : ListIndex context), P (var ind))
     (app'_case : forall [type arity] (f : functions arity type)
@@ -87,9 +92,29 @@ Definition neg {context} (formula : Formula context)
   : Formula context :=
 impl formula contradiction.
 
-Definition exist {type context} (formula : Formula (type :: context))
+Definition exist {context type} (formula : Formula (type :: context))
   : Formula context :=
 neg (univ (neg formula)).
+
+(* Notation *)
+
+Declare Scope first_order_formula.
+Bind Scope first_order_formula with Formula.
+Delimit Scope first_order_formula with fol_formula.
+Open Scope first_order_formula.
+
+Notation "⊥" := contradiction : first_order_formula.
+Infix "→" := impl (at level 60, right associativity) : first_order_formula.
+Notation "¬ φ" := (neg φ) (at level 35, right associativity)
+    : first_order_formula.
+Notation "∀'[ type ] ϕ" := (@univ _ type ϕ) (at level 70, right associativity)
+    : first_order_formula.
+Notation "∀' φ" := (univ φ) (at level 70, right associativity)
+    : first_order_formula.
+Notation "∃'[ type ] φ" := (@exist _ type φ) (at level 70, right associativity)
+    : first_order_formula.
+Notation "∃' φ" := (exist φ) (at level 70, right associativity)
+    : first_order_formula.
 
 Section Substitution.
 
@@ -106,8 +131,10 @@ Fixpoint addContext [type] (term : Term context type)
 end.
 End addContext.
 
-(* Constructing `Value`s to use in substitutions. *)
-Definition id_values {context} : Substitutions context context :=
+(* Constructing substitutions. *)
+
+(* Identity subsitution.  Does nothing. *)
+Definition id_subst {context} : Substitutions context context :=
 Heterolist.mapList context var.
 
 (* TODO generalise this to adding multiple types like addContext? *)
@@ -124,10 +151,11 @@ var ListIndex.head :: Heterolist.map (addContext [type]) values.
 
 
 Lemma addContext_to_id_subst {type context}
-  : add1ContextToSubst id_values = @id_values (type :: context).
-unfold add1ContextToSubst, id_values at 2; simpl; f_equal.
+  : add1ContextToSubst id_subst = @id_subst (type :: context).
+unfold add1ContextToSubst, id_subst at 2; simpl; f_equal.
 apply Heterolist.map_mapList.
 Qed.
+
 
 Section TermSubst.
 Context {context context'} (values : Substitutions context context').
@@ -158,9 +186,19 @@ end.
 
 End Substitution.
 
+(* Test notation *)
+
+(* Example: given a predicate symbol `formula` with one argument, the
+   formula `∃ x, ¬(formula x)`. *)
+Check fun formula => ∃' ¬predApp' formula [var ListIndex.head].
+(* or more generally, given a formula with one free variable, applying
+   it by substitution instead. *)
+Check fun formula => ∃' ¬formula_subst [var ListIndex.head] formula.
+
 End Syntax.
 
-Section Semantics.
+Module Model (sig : Signature).
+  Module _syntax := Syntax sig. Import sig _syntax.
 
 Structure Model := {
   modelType : types -> Type;
@@ -194,7 +232,7 @@ Fixpoint interpret'' {context} (values : Heterolist m.(modelType) context)
                             interpret'' (x :: values) formula
 end.
 
-Section Variations. Context {context type}.
+Section Variations. Context {context : list types} {type : types}.
 
 Definition evaluate (term : Term context type) values := evaluate'' values term.
 (* Evaluate term to a function from variable values to value. *)
@@ -222,78 +260,74 @@ induction term as [ind|? ? f args h_i].
 Qed.
 
 End Interpretation.
-End Semantics.
 
-Section Proofs.
+End Model.
+
+Module ProofSystem (sig : Signature).
+Module _syntax := Syntax sig. Import sig _syntax.
 
 Section defs.
 
 (* Note: experimental. *)
-Notation Assumptions context := (Formula context -> Type) (only parsing).
+Notation Assumptions context := (list (Formula context)) (only parsing).
+Notation "↑[ type ] assumptions" :=
+  (List.map (formula_subst (Heterolist.map (addContext [type]) id_subst))
+     assumptions)
+  (at level 8, right associativity).
+Notation "↑ assumptions" := (↑[_] assumptions)
+  (at level 8, right associativity).
 
 (* We define proofs in a context of free variables, with a set of
    assumptions that is allowed to refer to the variables. So proofs of
    statements with free variables are not to be interpreted as
    implicitly generalised (although if the set of assumptions does not
    refer to that variable, we should be able to generalise them.) *)
-Inductive Proof.
+(* The approach to universal quantifier elimination here is also found in
+   _A Constructive Analysis of First-Order Completeness Theorems in Coq_
+   by Dominik Wehr et al. in section 2.4. *)
+Inductive Proof | {context} (assumptions : Assumptions context)
+  : Formula context -> Type :=
+(* Propositional logic *)
+| by_assumption {p} : Occ p assumptions -> Proof _ p
+| rule_1 p q : Proof _ (p → q → p)
+| rule_2 p q r : Proof _ ((p → q → r) → (p → q) → p → r)
+| by_contradiction p : Proof _ (¬¬p → p)
+| modus_ponens hyp concl : Proof _ (hyp → concl) -> Proof _ hyp -> Proof _ concl
+(* univ *)
+| univ_intro {type p} : Proof ↑[type]assumptions p
+                        -> Proof assumptions (∀'[type] p)
+| univ_elim {type} (term : Term context type) formula
+  : Proof _ (univ (type := type) formula)
+    -> Proof _ (formula_subst (term :: id_subst) formula).
 
 End defs.
 
-End Proofs.
+End ProofSystem.
 
-End ForVariables.
-#[global] Arguments var' {types functions context type}.
-#[global] Arguments var {types functions context}.
-#[global] Arguments contradiction {types functions predicates context}.
-(* Note: keep in mind that `functions` cannot be inferred until seeing
-   the `vararg_curry` arguments, which may make it difficult to infer. *)
-#[global] Arguments predApp {types functions predicates context arity}.
-
-
-Module FOLFormulaNotations.
-  Declare Scope first_order_formula.
-  Bind Scope first_order_formula with Formula.
-  Delimit Scope first_order_formula with fol_formula.
-  Open Scope first_order_formula.
-
-  Notation "⊥" := contradiction : first_order_formula.
-  Infix "->'" := impl (at level 60, right associativity) : first_order_formula.
-
-  Notation "¬ φ" := (neg φ) (at level 35, right associativity)
-    : first_order_formula.
-
-  Notation "∀' φ" := (univ φ) (at level 70, right associativity).
-  Notation "∃' φ" := (exist φ) (at level 70, right associativity).
-
-  (* Example: given a predicate symbol `formula` with one argument, the
-     formula `∃ x, ¬(formula x)`. *)
-  Check fun formula => ∃' ¬predApp' formula [var' Occ_head].
-  (* or more generally, given a formula with one free variable, applying
-     it by substitution instead. *)
-  Check fun formula => ∃' ¬formula_subst [var' Occ_head] formula.
-End FOLFormulaNotations.
+Declare Module sig : Signature.
+Module syntax := Syntax sig.
 
 
 (* Test example *)
 
-Section Example.
+Module ExampleSignature <: Signature.
 
-(* We could let these be automatically inferred (as Prop), but we might
-   as well specify Set. *)
-Inductive types : Set := nat' | bool'.
-Inductive functions : list types -> types -> Set :=
-| zero  : functions []           nat'
-| succ  : functions [nat']       nat'
-| leq   : functions [nat'; nat'] bool'.
-Inductive relations : list types -> Set :=
-| eq_n : relations [nat'; nat']
-| eq_b : relations [bool'; bool'].
+  (* Because the module system is a pain, we have to define the exported
+     names as definitions and not inductives. *)
+  (* We could let these be automatically inferred (as Prop), but we might
+     as well specify Set. *)
+  Inductive types' : Set := nat' | bool'. Definition types := types'.
+  Inductive functions' : list types -> types -> Set :=
+  | zero  : functions' []           nat'
+  | succ  : functions' [nat']       nat'
+  | leq   : functions' [nat'; nat'] bool'. Definition functions := functions'.
+  Inductive relations : list types -> Set :=
+  | eq_n : relations [nat'; nat']
+  | eq_b : relations [bool'; bool']. Definition predicates := relations.
 
-Notation Term := (Term functions).
-Notation ClosedTerm := (ClosedTerm functions).
-Notation Formula := (Formula functions relations).
-Notation Sentence := (Sentence functions relations).
+End ExampleSignature.
+
+Module _syntax := Syntax ExampleSignature. Import ExampleSignature _syntax.
 
 Check app zero.
 Check app leq.
@@ -305,11 +339,10 @@ Let mysentence := univ (type := nat')
                         contradiction)) : Sentence.
 
 Import ListIndex (head, fromTail).
-Import (notations) FOLFormulaNotations.
 
 Succeed Check eq_refl :
 mysentence = ∀' predApp eq_n (var head) (app zero)
-                ->' ¬predApp eq_n (var head) (app succ (app zero)).
+                → ¬predApp eq_n (var head) (app succ (app zero)).
 
 (* The expression could be in any context starting with
    `[bool'; nat'; nat'; ...]`. We need to specify the type only so that
@@ -322,17 +355,20 @@ Let sampleFormula : Formula [_; _; _]%list :=
 let x := var (fromTail (fromTail head)) in
 let y := var (fromTail head) in
 let b := var head in
-(predApp eq_b (app leq x y) b) ->' (predApp eq_b (app leq y x) b)
-                               ->' (predApp eq_n x y).
+(predApp eq_b (app leq x y) b) → (predApp eq_b (app leq y x) b)
+                               → (predApp eq_n x y).
 
 (* TODO: find and put implementation of actual Nat.leqb here *)
 Fixpoint leqb (m n : nat) : bool := match m, n with
 | 0, _ => true | S _, 0 => false | S m, S n => leqb m n
 end. Arguments leqb : simpl nomatch.
 
-Definition standard_model : Model functions relations := {|
+Module ModelofExample := Model ExampleSignature.
+Import ModelofExample (Model, modelType, modelFun, modelPred,
+    evaluate'', interpret'', evaluate, interpret, evaluate', interpret').
+Definition standard_model : Model := {|
   modelType type := match type with | nat' => nat | bool' => bool end;
-  modelFun _ _ f := match f in functions arity type
+  modelFun _ _ f := match f in functions' arity type
                             return vararg_function _ arity (_ type) with
     | zero => 0
     | succ => S
