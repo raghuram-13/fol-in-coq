@@ -229,30 +229,6 @@ Qed.
 End Interpretation.
 End Semantics.
 
-Section Proofs.
-
-Section defs.
-
-(* Note: experimental. *)
-Notation Assumptions context := (list (Formula context)) (only parsing).
-Notation "↑[ type ] assumptions" :=
-  (List.map (formula_subst (Heterolist.map (addContext [type]) id_subst))
-            assumptions)
-    (at level 8, right associativity).
-Notation "↑ assumptions" := (↑[_] assumptions)
-    (at level 8, right associativity).
-
-(* We define proofs in a context of free variables, with a set of
-   assumptions that is allowed to refer to the variables. So proofs of
-   statements with free variables are not to be interpreted as
-   implicitly generalised (although if the set of assumptions does not
-   refer to that variable, we should be able to generalise them.) *)
-Inductive Proof.
-
-End defs.
-
-End Proofs.
-
 End ForVariables.
 #[global] Arguments var' {types functions context type}.
 #[global] Arguments var {types functions context}.
@@ -260,6 +236,7 @@ End ForVariables.
 (* Note: keep in mind that `functions` cannot be inferred until seeing
    the `vararg_curry` arguments, which may make it difficult to infer. *)
 #[global] Arguments predApp {types functions predicates context arity}.
+#[global] Arguments id_subst {types functions context}.
 
 
 Module FOLFormulaNotations.
@@ -293,6 +270,50 @@ Module FOLFormulaNotations.
   Check fun formula => ∃' ¬formula_subst [var ListIndex.head] formula.
 End FOLFormulaNotations.
 
+
+Section Proofs. Import (notations) FOLFormulaNotations.
+Context {types : Type} {functions : list types -> types -> Type}
+                       {predicates : list types -> Type}.
+Notation Formula := (Formula functions predicates).
+Notation Term := (Term functions).
+
+Section defs.
+
+(* Note: experimental. *)
+Notation Assumptions context := (list (Formula context)) (only parsing).
+Notation "↑[ type ] assumptions" :=
+  (List.map (formula_subst (Heterolist.map (addContext [type]) id_subst))
+            assumptions)
+    (at level 8, right associativity).
+Notation "↑ assumptions" := (↑[_] assumptions)
+    (at level 8, right associativity).
+
+(* We define proofs in a context of free variables, with a set of
+   assumptions that is allowed to refer to the variables. So proofs of
+   statements with free variables are not to be interpreted as
+   implicitly generalised (although if the set of assumptions does not
+   refer to that variable, we should be able to generalise them.) *)
+(* The approach to universal quantifier elimination here is also found in
+   _A Constructive Analysis of First-Order Completeness Theorems in Coq_
+   by Dominik Wehr et al. in section 2.4. *)
+Reserved Infix "⊢" (at level 75).
+Inductive Proof | {context} (assumptions : Assumptions context)
+  : Formula context -> Type :=
+(* Propositional logic *)
+| by_assumption {p} : Occ p assumptions -> _ ⊢ p
+| rule_1 p q : _ ⊢ p → q → p
+| rule_2 p q r : _ ⊢ (p → q → r) → (p → q) → p → r
+| by_contradiction p : _ ⊢ ¬¬p → p
+| modus_ponens hyp concl : _ ⊢ hyp → concl -> _ ⊢ hyp -> _ ⊢ concl
+(* univ *)
+| univ_intro {type p} : ↑[type]assumptions ⊢ p -> assumptions ⊢ ∀'[type] p
+| univ_elim {type} term {p}
+  : _ ⊢ univ (type := type) p -> _ ⊢ formula_subst (term :: id_subst) p
+where "assumptions ⊢ p" := (Proof assumptions p).
+
+End defs.
+
+End Proofs.
 
 (* Test example *)
 
