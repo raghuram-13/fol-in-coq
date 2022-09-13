@@ -16,6 +16,8 @@ Implicit Types (type : types) (context arity : list types).
 
 Section Syntax.
 
+(* Coq does not generate useful schemes for this nested inductive type.
+   We mostly just use fix and match instead. *)
 Section TermDef. #[local] Unset Elimination Schemes.
 Inductive Term context | : types -> Type :=
 | var (ind : ListIndex context) : Term (ListIndex.ref context ind)
@@ -23,8 +25,8 @@ Inductive Term context | : types -> Type :=
                     (args : Heterolist Term arity) : Term type.
 End TermDef.
 
-Section var'. Context {context type} (occ : Occ type context).
-Import (notations) EqNotations.
+Section var'. Import (notations) EqNotations.
+Context {context type} (occ : Occ type context).
 Definition var' : Term context type :=
 rew [Term context] Occ.ref_toIndex occ in var (Occ.toIndex occ).
 End var'.
@@ -87,7 +89,7 @@ Definition neg {context} (formula : Formula context)
   : Formula context :=
 impl formula contradiction.
 
-Definition exist {type context} (formula : Formula (type :: context))
+Definition exist {context type} (formula : Formula (type :: context))
   : Formula context :=
 neg (univ (neg formula)).
 
@@ -106,8 +108,10 @@ Fixpoint addContext [type] (term : Term context type)
 end.
 End addContext.
 
-(* Constructing `Value`s to use in substitutions. *)
-Definition id_values {context} : Substitutions context context :=
+(* Constructing substitutions. *)
+
+(* Identity subsitution.  Has no effect. *)
+Definition id_subst {context} : Substitutions context context :=
 Heterolist.mapList context var.
 
 (* TODO generalise this to adding multiple types like addContext? *)
@@ -116,7 +120,7 @@ Heterolist.mapList context var.
    This is achieved by incrementing the de Bruijn indexes of the terms
    to substitute (achieved by `Heterolist.map (addContext [type])`) and
    adding an identity substitution at the front (achieved by
-   `var' Occ_head ::`). *)
+   `var ListIndex.head ::`). *)
 Definition add1ContextToSubst {type context context'}
   (values : Substitutions context context')
   : Substitutions (type :: context) (type :: context') :=
@@ -124,10 +128,11 @@ var ListIndex.head :: Heterolist.map (addContext [type]) values.
 
 
 Lemma addContext_to_id_subst {type context}
-  : add1ContextToSubst id_values = @id_values (type :: context).
-unfold add1ContextToSubst, id_values at 2; simpl; f_equal.
+  : add1ContextToSubst id_subst = @id_subst (type :: context).
+unfold add1ContextToSubst, id_subst at 2; simpl; f_equal.
 apply Heterolist.map_mapList.
 Qed.
+
 
 Section TermSubst.
 Context {context context'} (values : Substitutions context context').
@@ -229,7 +234,13 @@ Section Proofs.
 Section defs.
 
 (* Note: experimental. *)
-Notation Assumptions context := (Formula context -> Type) (only parsing).
+Notation Assumptions context := (list (Formula context)) (only parsing).
+Notation "↑[ type ] assumptions" :=
+  (List.map (formula_subst (Heterolist.map (addContext [type]) id_subst))
+            assumptions)
+    (at level 8, right associativity).
+Notation "↑ assumptions" := (↑[_] assumptions)
+    (at level 8, right associativity).
 
 (* We define proofs in a context of free variables, with a set of
    assumptions that is allowed to refer to the variables. So proofs of
@@ -258,20 +269,28 @@ Module FOLFormulaNotations.
   Open Scope first_order_formula.
 
   Notation "⊥" := contradiction : first_order_formula.
-  Infix "->'" := impl (at level 60, right associativity) : first_order_formula.
+  Infix "→" := impl
+      (at level 60, right associativity) : first_order_formula.
 
-  Notation "¬ φ" := (neg φ) (at level 35, right associativity)
-    : first_order_formula.
+  Notation "¬ φ" := (neg φ)
+      (at level 35, right associativity) : first_order_formula.
 
-  Notation "∀' φ" := (univ φ) (at level 70, right associativity).
-  Notation "∃' φ" := (exist φ) (at level 70, right associativity).
+  Notation "∀'[ type ] φ" := (univ (type := type) φ)
+      (at level 70, right associativity) : first_order_formula.
+  Notation "∀' φ" := (univ φ)
+      (at level 70, right associativity) : first_order_formula.
+  Notation "∃'[ type ] φ" := (exist (type := type) φ)
+      (at level 70, right associativity) : first_order_formula.
+  Notation "∃' φ" := (exist φ)
+      (at level 70, right associativity) : first_order_formula.
 
+  (* Test the notation *)
   (* Example: given a predicate symbol `formula` with one argument, the
      formula `∃ x, ¬(formula x)`. *)
-  Check fun formula => ∃' ¬predApp' formula [var' Occ_head].
+  Check fun formula => ∃' ¬predApp' formula [var ListIndex.head].
   (* or more generally, given a formula with one free variable, applying
      it by substitution instead. *)
-  Check fun formula => ∃' ¬formula_subst [var' Occ_head] formula.
+  Check fun formula => ∃' ¬formula_subst [var ListIndex.head] formula.
 End FOLFormulaNotations.
 
 
@@ -309,7 +328,7 @@ Import (notations) FOLFormulaNotations.
 
 Succeed Check eq_refl :
 mysentence = ∀' predApp eq_n (var head) (app zero)
-                ->' ¬predApp eq_n (var head) (app succ (app zero)).
+                → ¬predApp eq_n (var head) (app succ (app zero)).
 
 (* The expression could be in any context starting with
    `[bool'; nat'; nat'; ...]`. We need to specify the type only so that
@@ -322,8 +341,8 @@ Let sampleFormula : Formula [_; _; _]%list :=
 let x := var (fromTail (fromTail head)) in
 let y := var (fromTail head) in
 let b := var head in
-(predApp eq_b (app leq x y) b) ->' (predApp eq_b (app leq y x) b)
-                               ->' (predApp eq_n x y).
+(predApp eq_b (app leq x y) b) → (predApp eq_b (app leq y x) b)
+                               → (predApp eq_n x y).
 
 (* TODO: find and put implementation of actual Nat.leqb here *)
 Fixpoint leqb (m n : nat) : bool := match m, n with
