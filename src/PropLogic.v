@@ -7,54 +7,49 @@ Import (notations) EqNotations.
 
 Ltac done := guard numgoals = 0.
 
-(* Limit scope of Variable declarations. They seem to be treated as some kind of
-   axioms otherwise, whereas the intention is to parametrise future functions
-   on them. *)
-Section Main. Variable AtomicProposition : Type.
+Module Type Language.
+  Parameter Proposition : Type.
 
+  Parameter (contradiction : Proposition)
+            (impl : Proposition -> Proposition -> Proposition).
+End Language.
 
-(* The propositions studied. *)
-Inductive Proposition :=
-| atomic : AtomicProposition -> Proposition
-| falsum : Proposition
-| imp : Proposition -> Proposition -> Proposition.
+(* Free languages on a set of atomic propositions will be defined
+   as an instantiation later. *)
 
+Module Theory (lang : Language). Import lang.
 
-(* Other operations and notation. *)
+(* Notation *)
+Notation "⊥" := contradiction.
+Infix "'->" := impl (at level 60, right associativity).
 
-Definition neg (p : Proposition)    : Proposition := imp p falsum.
-
-Local Notation "⊥" := falsum.
-Local Infix "'->" := imp (at level 60, right associativity).
-Local Notation "¬ p" := (neg p) (at level 35, right associativity).
+Definition neg (p : Proposition) : Proposition := p '-> ⊥.
+Notation "¬ p" := (neg p) (at level 35, right associativity).
 
 (* Semantics *)
+Structure model := {
+  model_fun :> Proposition -> bool;
+  model_resp_contra : model_fun ⊥ = false;
+  model_resp_impl p q : model_fun (p '-> q) = implb (model_fun p) (model_fun q)
+}.
+#[local] Hint Rewrite model_resp_contra model_resp_impl.
 
-Definition valuation := AtomicProposition -> bool.
-
-Fixpoint models' (v : valuation) (p : Proposition) : bool := match p with
-| atomic n => v n
-| ⊥ => false
-| p '-> q => implb (models' v p) (models' v q)
-end.
-
-Definition models (v : valuation) (Γ : unary_predicate Proposition) : Prop :=
-forall p : Proposition, p ∈ Γ -> Is_true (models' v p).
+Definition satisfies (m : model) (Γ : unary_predicate Proposition) : Prop :=
+forall p : Proposition, p ∈ Γ -> Is_true (m p).
 
 Definition entails (Γ : unary_predicate Proposition) p :=
-forall v : valuation, models v Γ -> Is_true (models' v p).
+forall m : model, satisfies m Γ -> Is_true (m p).
 
-Local Infix "⊨" := entails (at level 75).
+#[local] Infix "⊨" := entails (at level 75).
 
 Section ModelTerminology. Variable (assumptions : unary_predicate Proposition).
-Definition valid         : Prop := forall v : valuation, models v assumptions.
-Definition unsatisfiable : Prop := forall v : valuation, ~models v assumptions.
-Definition satisfiable   : Prop := exists v : valuation, models v assumptions.
+Definition valid         : Prop := forall m : model, satisfies m assumptions.
+Definition unsatisfiable : Prop := forall m : model, ~satisfies m assumptions.
+Definition satisfiable   : Prop := exists m : model, satisfies m assumptions.
 End ModelTerminology.
 
 
 (* Proofs *)
-
 Section InductiveDefs. Context {assumptions : Proposition -> Type}.
 
 (* The type of proofs of a given Proposition.
@@ -345,18 +340,16 @@ Section ConnectionWithSemantics.
 
 Theorem soundness_theorem (Γ : unary_predicate Proposition) p
     : [Γ |- p] -> Γ ⊨ p.
-intros [proof] v h.
+intros [proof] m h.
 induction proof as [p h_in|p q|p q r|p|p q ? h_i_imp ? h_i_p]; [
   (* by_assumption *)
   exact (h p h_in)
   (* Takes care of no-hypothesis introduction rules. *)
-| simpl models';
-  destruct (models' v p); try destruct (models' v q); try destruct (models' v r)
-  ; reflexivity
+| try unfold neg; autorewrite with core;
+  destruct (m p); try destruct (m q); try destruct (m r); reflexivity
 ..(* modus_ponens *)
 | rewrite Is_true_iff_eq_true in h_i_p, h_i_imp |- *;
-  simpl models' in h_i_imp; rewrite h_i_p in h_i_imp; destruct (models' v q)
-  ; [ reflexivity | discriminate h_i_imp ]
+  autorewrite with core in h_i_imp; rewrite h_i_p in h_i_imp; exact h_i_imp
 ].
 Qed.
 
@@ -518,27 +511,50 @@ unfold consistent in h_consistent; rewrite (inconsistent_iff Γ) in h_consistent
 destruct (ultrafilter_lemma_em (Build_ProperFilter h_consistent))
   as [uf h_incl].
 pose (h_uf_em p := Is_true_em (uf p) : p ∈ uf \/ p ∉ uf).
-set (v := fun index => uf (atomic index));
-exists v.
-assert (h_model : forall p : Proposition, Is_true (models' v p) <-> p ∈ uf).
-{ induction p as [| |p1 h_i_p1 p2 h_i_p2]; [ unfold v .. | ]; simpl models'.
-  + reflexivity.
-  + pose (Ultrafilter'_is_proper uf : ⊥ ∉ uf); simpl Is_true; intuition.
-  + rewrite Is_true_impl.
-    (* Manually simulate `rewrite (imp_as_disj p1 p2)` because it doesn't work. *)
-    transitivity (disj (¬p1) p2 ∈ uf); [|
-      symmetry; apply (filter_respects_equiv uf), imp_as_disj ].
-    replace (disj (¬p1) p2) with (join (B := LTA) (complement (B := LTA) p1) p2)
-      by reflexivity;
-    rewrite (elem_impl_impl h_uf_em (Ultrafilter_spec uf)); simpl.
-    apply Morphisms_Prop.iff_iff_iff_impl_morphism; assumption. }
+eexists {| model_fun := uf;
+  model_resp_contra := ltac:(admit);
+  model_resp_impl p q := ltac:(admit) |}.
 assert (h_incl' : forall p, p ∈ Γ -> p ∈ uf).
 { intros ? h; apply h_incl, proves_iff; proof_assumption. }
-intros ? h; apply h_incl' in h. exact (proj2 (h_model p) h).
-Qed.
+intros ? h; exact (h_incl' _ h).
+Admitted.
 
 End Completeness.
 
 End ConnectionWithSemantics.
 
-End Main.
+End Theory.
+
+Module FreeLanguage <: Language.
+  (* Can be instantiated by `FreeLanguage with Parameter Atom := …`. *)
+  Parameter Atom : Type.
+
+  (* Ugly hack: module types do not allow inductives (or even
+     constructors?!) to be used to instantiate parameters, forcing us to
+     do this. *)
+  Inductive Proposition' :=
+  | atom' : Atom -> Proposition'
+  | contradiction' : Proposition'
+  | impl' : Proposition' -> Proposition' -> Proposition'.
+  Definition Proposition := Proposition'.
+  Definition atom := atom'. Definition contradiction := contradiction'.
+  Definition impl := impl'.
+
+  Module _prop_lang <: Language.
+    Definition Proposition := Proposition.
+    Definition contradiction := contradiction.
+    Definition impl := impl.
+  End _prop_lang.
+  Module _general_theory := Theory _prop_lang.
+
+  Definition valuation_model (v : Atom -> bool) : _general_theory.model := {|
+    _general_theory.model_fun := fix models' p := match p with
+    | atom' n => v n
+    | contradiction' => false
+    | impl' p q => implb (models' p) (models' q)
+    end;
+    _general_theory.model_resp_contra := eq_refl;
+    _general_theory.model_resp_impl _ _ := eq_refl
+  |}.
+
+End FreeLanguage.
