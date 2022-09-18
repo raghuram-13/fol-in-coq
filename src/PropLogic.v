@@ -1,4 +1,4 @@
-Set Implicit Arguments.
+Set Implicit Arguments. Unset Strict Implicit.
 
 Require Import SetNotations Util Assumptions. Require Lattices.
 Import (notations) EqNotations.
@@ -7,32 +7,45 @@ Import (notations) EqNotations.
 
 Ltac done := guard numgoals = 0.
 
-Module Type Language.
-  Parameter Proposition : Type.
 
-  Parameter (contradiction : Proposition)
-            (impl : Proposition -> Proposition -> Proposition).
-End Language.
+Structure Language := {
+  lang_carrier :> Type;
+  contradiction : lang_carrier;
+  impl : lang_carrier -> lang_carrier -> lang_carrier
+}.
+Arguments impl {_}.
 
-(* Free languages on a set of atomic propositions will be defined
-   as an instantiation later. *)
+(* Free languages on a set of atomic propositions as a special case. *)
+Section FreeLanguage.
+  Variable Atom : Type.
 
-Module Theory (lang : Language). Import lang.
+  Inductive FreeLang :=
+  | FreeLang_atom : Atom -> FreeLang
+  | FreeLang_contradiction : FreeLang
+  | FreeLang_impl : FreeLang -> FreeLang -> FreeLang.
+
+  Definition FreeLanguage := {|
+    lang_carrier := FreeLang;
+    contradiction := FreeLang_contradiction; impl := FreeLang_impl
+  |}.
+End FreeLanguage.
+Arguments FreeLang_contradiction {Atom}.
 
 (* Notation *)
-Notation "⊥" := contradiction.
+Notation "⊥" := (contradiction _).
 Infix "'->" := impl (at level 60, right associativity).
 
-Definition neg (p : Proposition) : Proposition := p '-> ⊥.
+Definition neg {l : Language} (p : l) : l := p '-> ⊥.
 Notation "¬ p" := (neg p) (at level 35, right associativity).
 
 (* Semantics *)
+Section Semantics. Context {Proposition : Language}.
+
 Structure model := {
   model_fun :> Proposition -> bool;
   model_resp_contra : model_fun ⊥ = false;
   model_resp_impl p q : model_fun (p '-> q) = implb (model_fun p) (model_fun q)
 }.
-#[local] Hint Rewrite model_resp_contra model_resp_impl.
 
 Definition satisfies (m : model) (Γ : unary_predicate Proposition) : Prop :=
 forall p : Proposition, p ∈ Γ -> Is_true (m p).
@@ -40,14 +53,33 @@ forall p : Proposition, p ∈ Γ -> Is_true (m p).
 Definition entails (Γ : unary_predicate Proposition) p :=
 forall m : model, satisfies m Γ -> Is_true (m p).
 
-#[local] Infix "⊨" := entails (at level 75).
-
 Section ModelTerminology. Variable (assumptions : unary_predicate Proposition).
 Definition valid         : Prop := forall m : model, satisfies m assumptions.
 Definition unsatisfiable : Prop := forall m : model, ~satisfies m assumptions.
 Definition satisfiable   : Prop := exists m : model, satisfies m assumptions.
 End ModelTerminology.
 
+End Semantics.
+Arguments model Proposition : clear implicits.
+#[local] Infix "⊨" := entails (at level 75).
+#[export] Hint Rewrite @model_resp_contra @model_resp_impl.
+
+(* For the case of free languages *)
+Section FreeLangsSemantics.
+  Variable Atom : Type.
+
+  Definition valuation_model (v : Atom -> bool) : model _ := {|
+    model_fun := fix models' (p : FreeLanguage Atom) := match p with
+    | FreeLang_atom n => v n
+    | FreeLang_contradiction => false
+    | FreeLang_impl p q => implb (models' p) (models' q)
+    end;
+    model_resp_contra := eq_refl;
+    model_resp_impl _ _ := eq_refl
+  |}.
+End FreeLangsSemantics.
+
+Section Theory. Context {Proposition : Language}.
 
 (* Proofs *)
 Section InductiveDefs. Context {assumptions : Proposition -> Type}.
@@ -355,7 +387,7 @@ Qed.
 
 
 Import Coq.Classes.RelationClasses (Reflexive, Transitive, PreOrder).
-Implicit Types (Γ : Proposition -> Type) (* (p q r : Proposition) *).
+Implicit Types (Γ : Proposition -> Type) (p q r : Proposition).
 
 Definition provable_le {Γ} p q := [Γ;; p |- q].
 
@@ -524,37 +556,3 @@ End Completeness.
 End ConnectionWithSemantics.
 
 End Theory.
-
-Module FreeLanguage <: Language.
-  (* Can be instantiated by `FreeLanguage with Parameter Atom := …`. *)
-  Parameter Atom : Type.
-
-  (* Ugly hack: module types do not allow inductives (or even
-     constructors?!) to be used to instantiate parameters, forcing us to
-     do this. *)
-  Inductive Proposition' :=
-  | atom' : Atom -> Proposition'
-  | contradiction' : Proposition'
-  | impl' : Proposition' -> Proposition' -> Proposition'.
-  Definition Proposition := Proposition'.
-  Definition atom := atom'. Definition contradiction := contradiction'.
-  Definition impl := impl'.
-
-  Module _prop_lang <: Language.
-    Definition Proposition := Proposition.
-    Definition contradiction := contradiction.
-    Definition impl := impl.
-  End _prop_lang.
-  Module _general_theory := Theory _prop_lang.
-
-  Definition valuation_model (v : Atom -> bool) : _general_theory.model := {|
-    _general_theory.model_fun := fix models' p := match p with
-    | atom' n => v n
-    | contradiction' => false
-    | impl' p q => implb (models' p) (models' q)
-    end;
-    _general_theory.model_resp_contra := eq_refl;
-    _general_theory.model_resp_impl _ _ := eq_refl
-  |}.
-
-End FreeLanguage.
