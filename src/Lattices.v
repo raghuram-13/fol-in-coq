@@ -145,6 +145,7 @@ Module BooleanAlgebra.
        (join_distrib_meet' p q r) *)
 }.
 Arguments isBooleanAlgebra [B] le {_}, [B] le _.
+Arguments Build_isBooleanAlgebra B le H &.
 
 (* Specifying multiple argument sequences like this should allow us
    to either omit or specify all the `carrier` arguments, which is
