@@ -33,9 +33,9 @@ Arguments FreeLang_contradiction {Atom}.
 
 (* Notation *)
 Notation "⊥" := (contradiction _).
-Infix "'->" := impl (at level 60, right associativity).
+Infix "→" := impl (at level 60, right associativity).
 
-Definition neg {l : Language} (p : l) : l := p '-> ⊥.
+Definition neg {l : Language} (p : l) : l := p → ⊥.
 Notation "¬ p" := (neg p) (at level 35, right associativity).
 
 (* Semantics *)
@@ -44,7 +44,7 @@ Section Semantics. Context {Proposition : Language}.
 Structure model := {
   model_fun :> Proposition -> bool;
   model_resp_contra : model_fun ⊥ = false;
-  model_resp_impl p q : model_fun (p '-> q) = implb (model_fun p) (model_fun q)
+  model_resp_impl p q : model_fun (p → q) = implb (model_fun p) (model_fun q)
 }.
 
 Definition satisfies (m : model) (Γ : unary_predicate Proposition) : Prop :=
@@ -93,10 +93,10 @@ Section InductiveDefs. Context {assumptions : Proposition -> Type}.
    A single assumption `p` is represented by `eq p : Proposition -> Prop`. *)
 Inductive Proof : Proposition -> Type :=
 | by_assumption {p} : assumptions p -> Proof p
-| rule_1 p q : Proof (p '-> q '-> p)
-| rule_2 p q r : Proof ((p '-> q '-> r) '-> (p '-> q) '-> (p '-> r))
-| by_contradiction p : Proof (¬¬p '-> p)
-| modus_ponens hyp concl : Proof (hyp '-> concl) -> Proof hyp -> Proof concl.
+| rule_1 p q : Proof (p → q → p)
+| rule_2 p q r : Proof ((p → q → r) → (p → q) → (p → r))
+| by_contradiction p : Proof (¬¬p → p)
+| modus_ponens hyp concl : Proof (hyp → concl) -> Proof hyp -> Proof concl.
 
 (* Predicate expressing provability of a Proposition.
 
@@ -248,38 +248,38 @@ End RelationBetweenDifferentAssumptions.
 (* Just so happens that these lemmas share the same Γ, so a section works. *)
 Section SomeLemmas. Context {Γ : Proposition -> Type}.
 
-Definition modus_ponens_binary p q r (implication : Γ |- p '-> q '-> r)
+Definition modus_ponens_binary p q r (implication : Γ |- p → q → r)
     : Γ |- p -> Γ |-q -> Γ |- r :=
 fun proof1 proof2 => modus_ponens (modus_ponens implication proof1) proof2.
 
 (* We prove a few results in a syntax resembling, e.g., Hilbert-style proofs,
    just to demonstrate that we can. *)
 
-Definition id p : Γ |- (p '-> p) :=
-let step_1 : Γ |- p '-> (p '-> p) '-> p         := rule_1 p (p '-> p) in
-let step_2 : Γ |- p '-> p '-> p                 := rule_1 p p in
-let step_3 : Γ |- (p '-> (p '-> p) '-> p) '-> (p '-> p '-> p) '-> (p '-> p)
-                                                := rule_2 p (p '-> p) p in
-let step_4 : Γ |- (p '-> p '-> p) '-> (p '-> p) := modus_ponens step_3 step_1 in
+Definition id p : Γ |- (p → p) :=
+let step_1 : Γ |- p → (p → p) → p       := rule_1 p (p → p) in
+let step_2 : Γ |- p → p → p             := rule_1 p p in
+let step_3 : Γ |- (p → (p → p) → p) → (p → p → p) → (p → p)
+                                        := rule_2 p (p → p) p in
+let step_4 : Γ |- (p → p → p) → (p → p) := modus_ponens step_3 step_1 in
 modus_ponens step_4 step_2.
 
-Definition add_under_imp p q : Γ |- q -> Γ |- (p '-> q) :=
-modus_ponens (rule_1 q p : Γ |- q '-> p '-> q).
+Definition add_under_imp p q : Γ |- q -> Γ |- (p → q) :=
+modus_ponens (rule_1 q p : Γ |- q → p → q).
 
 Definition modus_ponens_under_imp p hyp concl
-    : let P q := Γ |- (p '-> q) in   P (hyp '-> concl) -> P hyp -> P concl :=
+    : let P q := Γ |- (p → q) in P (hyp → concl) -> P hyp -> P concl :=
 modus_ponens_binary (rule_2 p hyp concl).
 
 End SomeLemmas.
 
 
 (* Sometimes it's easier to show `Γ;; p |- q` and sometimes it's easier to show
-   `Γ |- p '-> q`. This allows us to reach `concl` from `leaves` in the first
+   `Γ |- p → q`. This allows us to reach `concl` from `leaves` in the first
    mode and reach `leaves` in the second. *)
 Fixpoint deduction_theorem' {Γ} [leaves] [hyp concl]
         (proof : Γ ⊔ eq hyp ⊔ leaves |- concl)
-        (subproofs: forall [q], leaves q -> Γ |- hyp '-> q)
-    : Γ |- hyp '-> concl := match proof with
+        (subproofs: forall [q], leaves q -> Γ |- hyp → q)
+    : Γ |- hyp → concl := match proof with
 | by_assumption (inr h)       => subproofs h
 | by_assumption (inl (inr h)) => rew dependent h in id hyp
 | by_assumption (inl (inl h)) => add_under_imp hyp (by_assumption h)
@@ -291,11 +291,11 @@ Fixpoint deduction_theorem' {Γ} [leaves] [hyp concl]
                                   (deduction_theorem' proof2 subproofs)
 end.
 
-Definition deduction_theorem {Γ} [hyp concl] proof : Γ |- hyp '-> concl :=
+Definition deduction_theorem {Γ} [hyp concl] proof : Γ |- hyp → concl :=
 deduction_theorem' (leaves := ∅) (proof_mono (fun _ h => inl h) proof)
                                  (fun _ => False_rect _).
 
-Definition deduction_theorem_conv {Γ} [hyp concl] (proof : Γ |- hyp '-> concl)
+Definition deduction_theorem_conv {Γ} [hyp concl] (proof : Γ |- hyp → concl)
     : Γ;; hyp |- concl :=
 modus_ponens (proof_mono (fun _ h => inl h) proof) (proof_refl hyp).
 
@@ -307,10 +307,10 @@ apply deduction_theorem' with (leaves := leaves'); [
   | intro_assumption
 ].
 
-(* Given a goal (Γ |- p '-> q), `red_by_dt to <leaves> by <tactic>` constructs a
+(* Given a goal (Γ |- p → q), `red_by_dt to <leaves> by <tactic>` constructs a
    proof of q allowing Γ, p and also elements of `leaves` as assumptions,
    automatically filling in proofs of 'obvious' assumptions, and leaves goals to
-   construct proofs (Γ |- p '-> q') for all assumptions `q'` of `leaves`.
+   construct proofs (Γ |- p → q') for all assumptions `q'` of `leaves`.
 
    The "to" clause can be omitted if the set of leaves is inferrable, but this
    is rarely the case. (Omitting the "by" clause would amount to q itself being
@@ -326,41 +326,40 @@ reducing_deduction_theorem _ ltac:(tactic).
 
 (* `i` stands for inference: this is expressed as an inference rule rather
    than a proof of an implication. *)
-Definition interchange_hypotheses_i {Γ} p q r
-    : Γ;; p '-> q '-> r |- q '-> p '-> r.
-red_by_dt to (eq (p '-> q)) by eapply modus_ponens_under_imp.
+Definition interchange_hypotheses_i {Γ} p q r : Γ;; p → q → r |- q → p → r.
+red_by_dt to (eq (p → q)) by eapply modus_ponens_under_imp.
 exact (rule_1 q p).
 Defined.
 
-Definition exfalso {Γ} p : Γ |- ⊥ '-> p.
+Definition exfalso {Γ} p : Γ |- ⊥ → p.
 red_by_dt to (eq (¬¬p)) by apply (modus_ponens (by_contradiction p)).
 exact (rule_1 ⊥ (¬p)).
 Defined.
 
-Definition from_contradiction {Γ} p q : Γ |- ¬p '-> p '-> q :=
+Definition from_contradiction {Γ} p q : Γ |- ¬p → p → q :=
 modus_ponens (rule_2 p ⊥ q) (deduction_theorem (exfalso q)).
 
-Definition absurd p q {Γ} : Γ |- p '-> ¬p '-> q :=
-proof_trans' (Γ' := eq (¬p '-> p '-> q))
+Definition absurd p q {Γ} : Γ |- p → ¬p → q :=
+proof_trans' (Γ' := eq (¬p → p → q))
   ltac:(intro_assumption; exact (from_contradiction p q))
   (interchange_hypotheses_i (¬p) p q).
 
-Definition impl_comp {Γ} p q r : Γ |- (q '-> r) '-> (p '-> q) '-> (p '-> r).
+Definition impl_comp {Γ} p q r : Γ |- (q → r) → (p → q) → (p → r).
 apply deduction_theorem.
 apply (modus_ponens (rule_2 p q r)). apply deduction_theorem; proof_assumption.
 Defined.
 
 (* TODO this could be more legible: something looking more like
      apply interchange_hypotheses_i; exact impl_comp p q r. *)
-Definition impl_trans {Γ} p q r : Γ |- (p '-> q) '-> (q '-> r) '-> (p '-> r) :=
-proof_trans' (Γ' := eq ((q '-> r) '-> (p '-> q) '-> (p '-> r)))
+Definition impl_trans {Γ} p q r : Γ |- (p → q) → (q → r) → (p → r) :=
+proof_trans' (Γ' := eq ((q → r) → (p → q) → (p → r)))
   ltac:(intro_assumption; exact (impl_comp p q r))
   (interchange_hypotheses_i _ _ _).
 
-Definition modus_tollens {Γ} p q : Γ |- (p '-> q) '-> (¬q '-> ¬p) :=
+Definition modus_tollens {Γ} p q : Γ |- (p → q) → (¬q → ¬p) :=
 impl_trans p q ⊥.
 
-Definition modus_tollens_conv {Γ} p q : Γ |- (¬q '-> ¬p) '-> (p '-> q).
+Definition modus_tollens_conv {Γ} p q : Γ |- (¬q → ¬p) → (p → q).
 apply deduction_theorem.
 red_by_dt to (eq (¬¬q)) by apply (modus_ponens (by_contradiction q)).
 apply interchange_hypotheses_i.
@@ -403,8 +402,8 @@ Instance : forall Γ, PreOrder (provable_le (Γ := Γ)) := fun Γ =>
 {| Coq.Classes.RelationClasses.PreOrder_Reflexive := provable_le_refl;
    Coq.Classes.RelationClasses.PreOrder_Transitive := provable_le_trans |}.
 
-Let disj p q := (p '-> q) '-> q.
-Let conj p q := ¬(p '-> ¬q).
+Let disj p q := (p → q) → q.
+Let conj p q := ¬(p → ¬q).
 
 Let left_proves_disj {Γ} p q : Γ;; p |- disj p q. refine (
 deduction_theorem (modus_ponens _ _)
@@ -418,13 +417,13 @@ deduction_theorem _
    This is the reason why Γ is not a section variable. *)
 Let disj_univ {Γ} p q r (h_p: Γ;;p |- r) (h_q: Γ;;q |- r) : Γ;; disj p q |- r.
 apply (modus_ponens (by_contradiction r)), deduction_theorem.
-assert (mt_convert: forall p', Γ;; p' |- r -> Γ;; (p '-> q) '-> q; ¬r |- ¬p').
+assert (mt_convert: forall p', Γ;; p' |- r -> Γ;; (p → q) → q; ¬r |- ¬p').
 { intros p' proof. apply proof_mono with (Γ := Γ ⊔ eq (¬r)); [
                      intro_assumption; detect_assumption | ].
   apply deduction_theorem in proof. apply deduction_theorem_conv.
   exact (modus_ponens (modus_tollens p' r) proof). }
 apply (modus_ponens (mt_convert q h_q)).
-apply modus_ponens with (hyp := p '-> q); [ proof_assumption | ].
+apply modus_ponens with (hyp := p → q); [ proof_assumption | ].
 apply (modus_ponens (from_contradiction p q)). exact (mt_convert p h_p).
 Defined.
 
@@ -467,7 +466,7 @@ modus_ponens proof_refl (absurd p ⊥).
 Let proves_disj_not {Γ} p : Γ |- disj p (¬p).
 apply deduction_theorem.
 red_by_dt to (eq (¬p)) by apply modus_ponens with (hyp := p).
-exact (proof_refl (p '-> ¬p)).
+exact (proof_refl (p → ¬p)).
 Defined.
 
 Let and_distrib_or' {Γ} p q r
@@ -522,13 +521,13 @@ Definition inconsistent_iff
     : inconsistent Γ <-> ⊥ ∼[LindenbaumTarskiAlgebra] ¬⊥ := proves_iff ⊥.
 
 Definition imp_as_disj (p q : LindenbaumTarskiAlgebra)
-    : (p '-> q : LindenbaumTarskiAlgebra) ∼ disj (¬p) q.
+    : (p → q : LindenbaumTarskiAlgebra) ∼ disj (¬p) q.
 split; apply has_proof.
 + apply deduction_theorem.
   refine (modus_ponens (deduction_theorem _) (proves_disj_not p)).
   apply disj_univ; (eapply modus_ponens
   ; swap 1 2; [apply proof_refl|proof_assumption]).
-+ red_by_dt to (eq (¬p '-> q)) by eapply modus_ponens; exact (absurd p q).
++ red_by_dt to (eq (¬p → q)) by eapply modus_ponens; exact (absurd p q).
 Defined.
 
 End LindenbaumTarskiAlgebra.
