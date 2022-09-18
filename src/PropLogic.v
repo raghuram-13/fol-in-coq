@@ -86,10 +86,10 @@ Section InductiveDefs. Context {assumptions : Proposition -> Type}.
 
 (* The type of proofs of a given Proposition.
 
-   We allow `assumptions` to be of type `Proposition -> Type` primarily for
-   the sake of combining assumptions with ⊔, in which case we can distinguish
-   between proofs by assumption as being of the first or second set of
-   assumptions.
+   We allow `assumptions` to be of type `Proposition -> Type` primarily
+   for the sake of combining assumptions with ⊔, in which case we can
+   distinguish between proofs by assumption as being of the first or
+   second set of assumptions.
    A single assumption `p` is represented by `eq p : Proposition -> Prop`. *)
 Inductive Proof : Proposition -> Type :=
 | by_assumption {p} : assumptions p -> Proof p
@@ -100,11 +100,11 @@ Inductive Proof : Proposition -> Type :=
 
 (* Predicate expressing provability of a Proposition.
 
-   This has just one constructor which takes only one argument, which means it
-   is 'essentially the same' as Proof assumptions p.  The difference is that it
-   is declared that `Provable assumptions p : Prop`, which effectively 'forgets'
-   the exact proof used, so that it behaves like a proposition rather than a
-   data type.*)
+   This has just one constructor which takes only one argument, which
+   means it is 'essentially the same' as Proof assumptions p.  The
+   difference is the universe: `Provable assumptions p : Prop`, so it
+   effectively 'forgets' the exact proof used and behaves like a
+   proposition rather than a data type.*)
 Definition Provable (p : Proposition) : Prop := inhabited (Proof p).
 
 End InductiveDefs.
@@ -118,7 +118,7 @@ Arguments Provable assumptions : clear implicits.
 Declare Scope proof_scope. Delimit Scope proof_scope with proof.
 
 Local Notation "Γ |- p"    := (Proof Γ p)      (at level 75) : proof_scope.
-Local Notation "|- p"      := (Proof ∅ p)      (at level 75) : proof_scope.
+Local Notation "|- p"      := (Proof ∅ p)     (at level 75) : proof_scope.
 Local Notation ";; p |- q" := (Proof (eq p) q) (at level 75) : proof_scope.
 
 Local Notation "Γ ;; p ; .. ; q |- r" := (Proof (..(Γ ⊔ eq p) .. ⊔ eq q) r)
@@ -144,14 +144,15 @@ Ltac proof_assumption hook := match goal with
 | |- _ |- _ => apply by_assumption; detect_assumption using only hook
 end.
 
-(* Automates constructing proofs of statements by assumption, simplifying
-   occurrences of ⊔ and =, taking a tactic `hook` to use in the branches (this
-   part is the same functionality as `detect_assumption`).
+(* Automates constructing proofs of statements by assumption,
+   simplifying occurrences of ⊔ and =, taking a tactic `hook` to use in
+   the branches (this part is the same functionality as
+   `detect_assumption`).
 
    The notation for passing the hook is the same as `detect_assumption`:
-   default `assumption` and `reflexivity`, `using <hook>` to try `hook` after
-   `assumption` and `reflexivity`, and `using only <hook>` to use only `hook`,
-   disabling the use of `assumption` and `reflexivity`. *)
+   default `assumption` and `reflexivity`, `using <hook>` to try `hook`
+   after `assumption` and `reflexivity`, and `using only <hook>` to use
+   only `hook`, disabling the use of `assumption` and `reflexivity`. *)
 Tactic Notation "proof_assumption" "using" tactic3(hook) :=
 (proof_assumption ltac:(assumption + reflexivity + hook)).
 Tactic Notation "proof_assumption" "using" "only" tactic3(hook) :=
@@ -224,8 +225,9 @@ Definition provable_trans Γ Γ' (h : forall [p], Γ' p -> [Γ |- p])
 provable_trans' h (proof_mono (fun _ h => inr h) proof).
 
 Section test.
-(* It is slightly verbose, but we _can_ show these results for appending a
-   few propositions to Γ using `proof_trans'`/`provable_trans'` reasonably. *)
+(* It is slightly verbose, but we _can_ show these results for appending
+   a few propositions to Γ using `proof_trans'`/`provable_trans'`
+   reasonably. *)
 Check fun Γ p (proof : Γ |- p) =>
   proof_trans' (eq_rect p _ proof) : forall q, Γ;; p |- q -> Γ |- q.
 Check fun Γ p q
@@ -252,8 +254,8 @@ Definition modus_ponens_binary p q r (implication : Γ |- p → q → r)
     : Γ |- p -> Γ |-q -> Γ |- r :=
 fun proof1 proof2 => modus_ponens (modus_ponens implication proof1) proof2.
 
-(* We prove a few results in a syntax resembling, e.g., Hilbert-style proofs,
-   just to demonstrate that we can. *)
+(* We prove a few results in a syntax resembling, e.g., Hilbert-style
+   proofs, just to demonstrate that we can. *)
 
 Definition id p : Γ |- (p → p) :=
 let step_1 : Γ |- p → (p → p) → p       := rule_1 p (p → p) in
@@ -273,9 +275,9 @@ modus_ponens_binary (rule_2 p hyp concl).
 End SomeLemmas.
 
 
-(* Sometimes it's easier to show `Γ;; p |- q` and sometimes it's easier to show
-   `Γ |- p → q`. This allows us to reach `concl` from `leaves` in the first
-   mode and reach `leaves` in the second. *)
+(* Sometimes it's easier to show `Γ;; p |- q` and sometimes it's easier
+   to show `Γ |- p → q`. This allows us to reach `concl` from `leaves`
+   in the first mode and reach `leaves` in the second. *)
 Fixpoint deduction_theorem' {Γ} [leaves] [hyp concl]
         (proof : Γ ⊔ eq hyp ⊔ leaves |- concl)
         (subproofs: forall [q], leaves q -> Γ |- hyp → q)
@@ -307,15 +309,16 @@ apply deduction_theorem' with (leaves := leaves'); [
   | intro_assumption
 ].
 
-(* Given a goal (Γ |- p → q), `red_by_dt to <leaves> by <tactic>` constructs a
-   proof of q allowing Γ, p and also elements of `leaves` as assumptions,
-   automatically filling in proofs of 'obvious' assumptions, and leaves goals to
-   construct proofs (Γ |- p → q') for all assumptions `q'` of `leaves`.
+(* Given a goal (Γ |- p → q), `red_by_dt to <leaves> by <tactic>`
+   constructs a proof of q allowing Γ, p and also elements of `leaves`
+   as assumptions, automatically filling in proofs of 'obvious'
+   assumptions, and leaves goals to construct proofs (Γ |- p → q') for
+   all assumptions `q'` of `leaves`.
 
-   The "to" clause can be omitted if the set of leaves is inferrable, but this
-   is rarely the case. (Omitting the "by" clause would amount to q itself being
-   one of the leaves, in which case the tactic invocation achieves nothing.)
-*)
+   The "to" clause can be omitted if the set of leaves is inferrable,
+   but this is rarely the case. (Omitting the "by" clause would amount
+   to `q` itself being one of the leaves, in which case the tactic
+   invocation achieves nothing.)  *)
 Tactic Notation "red_by_dt" "to" constr(leaves) "by" tactic3(tactic) :=
 reducing_deduction_theorem constr:(leaves) ltac:(tactic).
 Tactic Notation "red_by_dt" "by" tactic3(tactic) :=
@@ -324,8 +327,8 @@ reducing_deduction_theorem _ ltac:(tactic).
 
 (* More proofs in the proof system. *)
 
-(* `i` stands for inference: this is expressed as an inference rule rather
-   than a proof of an implication. *)
+(* `i` stands for inference: this is expressed as an inference rule
+   rather than a proof of an implication. *)
 Definition interchange_hypotheses_i {Γ} p q r : Γ;; p → q → r |- q → p → r.
 red_by_dt to (eq (p → q)) by eapply modus_ponens_under_imp.
 exact (rule_1 q p).
@@ -491,7 +494,7 @@ Instance : isBooleanAlgebra (provable_le (Γ := Γ)) := {|
   right_le_join p q := has_proof (right_proves_disj p q);
   join_le_of_both_le p q r '(inhabits h_p) '(inhabits h_q) := disj_univ h_p h_q;
 
-  (* `has_proof` coercion is sometimes not being inserted for some reason. *)
+  (* `has_proof` coercion sometimes not inserted for some reason. *)
   meet_le_left p q := has_proof (conj_proves_left p q);
   meet_le_right p q := has_proof (conj_proves_right p q);
   le_meet_of_le_both p q r '(inhabits h_p) '(inhabits h_q) := conj_univ h_p h_q;
