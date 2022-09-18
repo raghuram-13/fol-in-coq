@@ -88,7 +88,7 @@ End SpecialElements.
 
 Module BooleanAlgebra.
 
-#[projections(primitive)] Class isBooleanAlgebra B le `(@PreOrder B le) := {
+Class isBooleanAlgebra B le `(@PreOrder B le) := {
   isBooleanAlgebra_PreOrder :> PreOrder le := _;
   (* This is purely to allow us to use the ≤ and ∼ notations *)
   _BA_pre : Preordered := {| carrier := B; le := le; pre := _ |};
